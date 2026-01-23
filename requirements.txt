@@ -1,0 +1,2 @@
+# 프로젝트 의존성 패키지 목록
+# 사용 예시: pip install -r requirements.txt
