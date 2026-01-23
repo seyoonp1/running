@@ -22,6 +22,7 @@ wheels/
 
 # Virtual Environment
 venv/
+Backend/venv/
 env/
 ENV/
 .venv
@@ -40,3 +41,17 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Frontend
+Frontend/node_modules/
+Frontend/dist/
+Frontend/build/
+
+# Backend
+Backend/__pycache__/
+Backend/*.pyc
+Backend/.pytest_cache/
+
+# Logs
+*.log
+logs/
