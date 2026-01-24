@@ -9,8 +9,6 @@ Table users {
   username varchar(150) [not null, unique, note: '사용자명']
   email varchar(255) [not null, unique, note: '이메일']
   password varchar(128) [not null, note: '비밀번호 (해시)']
-  first_name varchar(150) [default: '', note: '이름']
-  last_name varchar(150) [default: '', note: '성']
   is_active boolean [default: true, note: '활성 상태']
   is_staff boolean [default: false, note: '스태프 여부']
   is_superuser boolean [default: false, note: '슈퍼유저 여부']
@@ -20,6 +18,35 @@ Table users {
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '수정일시']
   
   Note: '사용자 정보 테이블 (Django AbstractUser 확장)'
+}
+
+Table user_stats {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  user_id uuid [not null, unique, note: '사용자 ID (1:1 관계)']
+  rank integer [default: 0, note: '랭크']
+  total_hexes_claimed integer [default: 0, note: '역대 차지한 hex 횟수']
+  mvp_count integer [default: 0, note: 'MVP 횟수']
+  win_count integer [default: 0, note: '승리 횟수']
+  lose_count integer [default: 0, note: '패배 횟수']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '수정일시']
+  
+  Note: '사용자 통계 정보 - 플레이어 기록'
+}
+
+Table user_daily_records {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  user_id uuid [not null, note: '사용자 ID']
+  session_id uuid [not null, note: '세션 ID']
+  date date [not null, note: '기록 날짜']
+  distance_km double [default: 0.0, note: '그날 뛴 거리 (km)']
+  average_speed double [default: 0.0, note: '평균 속력 (km/h)']
+  hexes_claimed integer [default: 0, note: '점령한 땅 개수']
+  total_duration_sec integer [default: 0, note: '총 시간 (초)']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '수정일시']
+  
+  Note: '사용자 세션별 기록 - 사용자와 세션 조합별 활동 기록 (user_id, session_id 유일)'
 }
 
 Table friendships {
@@ -33,6 +60,22 @@ Table friendships {
   Note: '친구 관계 테이블'
 }
 
+Table mailbox {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  sender_id uuid [note: '보낸 사람 ID (시스템 메일의 경우 null)']
+  receiver_id uuid [not null, note: '받는 사람 ID']
+  mail_type varchar(50) [default: 'friend_request', note: '메일 타입: friend_request(친구 추가 요청)']
+  status varchar(20) [default: 'unread', note: '상태: unread(안읽음), read(읽음), accepted(수락됨), rejected(거절됨), deleted(삭제됨)']
+  title varchar(200) [note: '메일 제목']
+  content text [note: '메일 내용']
+  related_friendship_id uuid [note: '관련된 친구 요청 ID (친구 추가 요청 메일의 경우)']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '수정일시']
+  read_at timestamp [note: '읽은 시간']
+  
+  Note: '우편함 - 친구 추가 요청 메일 등이 도착하는 곳'
+}
+
 Table rooms {
   id uuid [pk, default: `uuid_generate_v4()`]
   name varchar(200) [not null, note: '방 이름']
@@ -40,7 +83,11 @@ Table rooms {
   invite_code varchar(20) [not null, unique, note: '초대 코드']
   max_participants integer [default: 20, note: '최대 참가자 수']
   game_duration_minutes integer [default: 60, note: '게임 지속 시간 (분)']
+  schedule json [default: '{}', note: '요일별 시간 설정 (예: {"월": "09:00-18:00", "화": "10:00-19:00"})']
+  duration_days integer [note: '기간 일수']
   scheduled_start timestamp [note: '예정 시작 시간']
+  game_area_bounds json [default: '{}', note: '게임 영역 경계 (예: {"north": ..., "south": ..., "east": ..., "west": ...})']
+  h3_resolution integer [default: 8, note: 'H3 해상도']
   rules json [default: '{}', note: '커스텀 규칙 (친구 초대 정보 포함)']
   is_active boolean [default: true, note: '활성 상태']
   created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
@@ -85,6 +132,8 @@ Table participants {
   last_h3_id varchar(20) [note: '마지막 H3 ID']
   last_location_at timestamp [note: '마지막 위치 업데이트 시간']
   joined_at timestamp [default: `CURRENT_TIMESTAMP`, note: '참가일시']
+  consecutive_attendance_days integer [default: 0, note: '방별 연속 출석일 수 (session.room과 user의 조합으로 추적)']
+  last_attendance_date date [note: '마지막 출석일 (방이 열리는 요일에 참석한 날)']
   
   Note: '세션 참가자 테이블'
 }
@@ -120,9 +169,7 @@ Table player_stats {
   distance_m double [default: 0.0, note: '이동 거리 (미터)']
   duration_sec integer [default: 0, note: '활동 시간 (초)']
   hexes_claimed integer [default: 0, note: '점령한 hex 수']
-  hexes_in_loops integer [default: 0, note: '루프에 포함된 hex 수']
   is_mvp boolean [default: false, note: 'MVP 여부']
-  mvp_score double [default: 0.0, note: 'MVP 점수']
   created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
   updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '수정일시']
   
@@ -158,6 +205,24 @@ Ref: friendships.requester_id > users.id [delete: cascade]
 
 // users -> friendships (친구 요청 받은 사람)
 Ref: friendships.addressee_id > users.id [delete: cascade]
+
+// users -> mailbox (보낸 사람)
+Ref: mailbox.sender_id > users.id [delete: cascade]
+
+// users -> mailbox (받는 사람)
+Ref: mailbox.receiver_id > users.id [delete: cascade]
+
+// friendships -> mailbox (관련 친구 요청)
+Ref: mailbox.related_friendship_id > friendships.id [delete: set null]
+
+// users -> user_stats (1:1)
+Ref: user_stats.user_id > users.id [delete: cascade]
+
+// users -> user_daily_records (1:N)
+Ref: user_daily_records.user_id > users.id [delete: cascade]
+
+// sessions -> user_daily_records (1:N)
+Ref: user_daily_records.session_id > sessions.id [delete: cascade]
 
 // users -> rooms (1:N)
 Ref: rooms.creator_id > users.id [delete: cascade]

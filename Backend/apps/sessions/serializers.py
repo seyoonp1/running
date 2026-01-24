@@ -74,7 +74,7 @@ class PlayerStatsSerializer(serializers.ModelSerializer):
         model = PlayerStats
         fields = [
             'id', 'session', 'participant', 'distance_m', 'duration_sec',
-            'hexes_claimed', 'hexes_in_loops', 'is_mvp', 'mvp_score',
+            'hexes_claimed', 'is_mvp',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'session', 'created_at', 'updated_at']

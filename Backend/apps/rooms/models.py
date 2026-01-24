@@ -15,7 +15,11 @@ class Room(models.Model):
     invite_code = models.CharField(max_length=20, unique=True, db_index=True)
     max_participants = models.IntegerField(default=20)
     game_duration_minutes = models.IntegerField(default=60)
+    schedule = models.JSONField(default=dict, blank=True, help_text='요일별 시간 설정 (예: {"월": "09:00-18:00", "화": "10:00-19:00"})')
+    duration_days = models.IntegerField(null=True, blank=True, help_text='기간 일수')
     scheduled_start = models.DateTimeField(null=True, blank=True)
+    game_area_bounds = models.JSONField(default=dict, blank=True, help_text='게임 영역 경계 (예: {"north": ..., "south": ..., "east": ..., "west": ...})')
+    h3_resolution = models.IntegerField(default=8, help_text='H3 해상도')
     rules = models.JSONField(default=dict, blank=True)  # Custom rules
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

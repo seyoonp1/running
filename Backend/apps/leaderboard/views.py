@@ -17,11 +17,11 @@ def leaderboard(request):
     
     if session_id:
         # Session-specific leaderboard
-        stats = PlayerStats.objects.filter(session_id=session_id).order_by('-mvp_score')
+        stats = PlayerStats.objects.filter(session_id=session_id).order_by('-hexes_claimed', '-distance_m')
     else:
         # Global leaderboard (all finished sessions)
         finished_sessions = Session.objects.filter(status='finished')
-        stats = PlayerStats.objects.filter(session__in=finished_sessions).order_by('-mvp_score')
+        stats = PlayerStats.objects.filter(session__in=finished_sessions).order_by('-hexes_claimed', '-distance_m')
     
     serializer = PlayerStatsSerializer(stats[:100], many=True)  # Top 100
     return Response({

@@ -11,8 +11,6 @@
 | username | VARCHAR(150) | UNIQUE, NOT NULL | 사용자명 |
 | email | VARCHAR | UNIQUE, NOT NULL | 이메일 |
 | password | VARCHAR(128) | NOT NULL | 비밀번호 (해시) |
-| first_name | VARCHAR(150) | | 이름 |
-| last_name | VARCHAR(150) | | 성 |
 | is_active | BOOLEAN | DEFAULT TRUE | 활성 상태 |
 | is_staff | BOOLEAN | DEFAULT FALSE | 스태프 여부 |
 | is_superuser | BOOLEAN | DEFAULT FALSE | 슈퍼유저 여부 |

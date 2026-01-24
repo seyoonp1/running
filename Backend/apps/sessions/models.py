@@ -68,6 +68,9 @@ class Participant(models.Model):
     last_h3_id = models.CharField(max_length=20, null=True, blank=True, db_index=True)
     last_location_at = models.DateTimeField(null=True, blank=True)
     joined_at = models.DateTimeField(auto_now_add=True)
+    # 방별 연속 출석일 수 (session.room과 user의 조합으로 추적)
+    consecutive_attendance_days = models.IntegerField(default=0, help_text='방별 연속 출석일 수')
+    last_attendance_date = models.DateField(null=True, blank=True, help_text='마지막 출석일 (방이 열리는 요일에 참석한 날)')
     
     class Meta:
         db_table = 'participants'
@@ -140,9 +143,7 @@ class PlayerStats(models.Model):
     distance_m = models.FloatField(default=0.0)
     duration_sec = models.IntegerField(default=0)
     hexes_claimed = models.IntegerField(default=0)
-    hexes_in_loops = models.IntegerField(default=0)
     is_mvp = models.BooleanField(default=False)
-    mvp_score = models.FloatField(default=0.0)  # MVP calculation score
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
