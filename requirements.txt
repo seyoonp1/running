@@ -1,4 +1,6 @@
 # 프로젝트 의존성 패키지 목록
-# 사용 예시: pip install -r requirements.txt
-
-*.md
+# 
+# Django 백엔드 의존성은 running/Backend/requirements.txt를 참조하세요.
+# 
+# 이 파일은 프로젝트 루트 레벨의 공통 의존성을 위한 것입니다.
+# 현재는 Backend/requirements.txt를 사용하세요.

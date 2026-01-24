@@ -1,0 +1,94 @@
+version: '3.8'
+
+# 로컬 개발용 Docker Compose 설정
+# nginx 없이 직접 포트로 접근 (http://localhost:8000, http://localhost:3000)
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: hexgame
+      POSTGRES_USER: hexgame
+      POSTGRES_PASSWORD: hexgame
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hexgame"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and pub/sub
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Django API Server (개발 모드)
+  django:
+    build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.development
+      - DATABASE_URL=postgresql://hexgame:hexgame@db:5432/hexgame
+      - DB_NAME=hexgame
+      - DB_USER=hexgame
+      - DB_PASSWORD=hexgame
+      - DB_HOST=db
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - DEBUG=True
+      - CORS_ALLOWED_ORIGINS=http://localhost:19006,http://localhost:3000,http://127.0.0.1:19006
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Node.js Socket.IO Server (개발 모드)
+  socketio:
+    build: 
+      context: ./socketio-server
+      dockerfile: Dockerfile
+    command: npm run dev
+    volumes:
+      - ./socketio-server:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=hexgame
+      - DB_USER=hexgame
+      - DB_PASSWORD=hexgame
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=dev-secret-key-change-in-production
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - CORS_ORIGIN=http://localhost:19006,http://localhost:3000,http://127.0.0.1:19006
+      - PORT=3000
+      - NODE_ENV=development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+

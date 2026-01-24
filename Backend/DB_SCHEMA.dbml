@@ -1,0 +1,214 @@
+// ============================================
+// 데이터베이스 스키마 - dbdiagram.io 형식
+// ============================================
+// 사용법: https://dbdiagram.io 에서 이 코드를 붙여넣으면 ERD 다이어그램이 생성됩니다
+// ============================================
+
+Table users {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  username varchar(150) [not null, unique, note: '사용자명']
+  email varchar(255) [not null, unique, note: '이메일']
+  password varchar(128) [not null, note: '비밀번호 (해시)']
+  first_name varchar(150) [default: '', note: '이름']
+  last_name varchar(150) [default: '', note: '성']
+  is_active boolean [default: true, note: '활성 상태']
+  is_staff boolean [default: false, note: '스태프 여부']
+  is_superuser boolean [default: false, note: '슈퍼유저 여부']
+  date_joined timestamp [default: `CURRENT_TIMESTAMP`, note: '가입일시']
+  last_login timestamp [note: '마지막 로그인']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '수정일시']
+  
+  Note: '사용자 정보 테이블 (Django AbstractUser 확장)'
+}
+
+Table friendships {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  requester_id uuid [not null, note: '친구 요청을 보낸 사용자 ID']
+  addressee_id uuid [not null, note: '친구 요청을 받은 사용자 ID']
+  status varchar(20) [default: 'pending', note: '상태: pending(대기중), accepted(수락됨), blocked(차단됨)']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '수정일시']
+  
+  Note: '친구 관계 테이블'
+}
+
+Table rooms {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  name varchar(200) [not null, note: '방 이름']
+  creator_id uuid [not null, note: '생성자 ID']
+  invite_code varchar(20) [not null, unique, note: '초대 코드']
+  max_participants integer [default: 20, note: '최대 참가자 수']
+  game_duration_minutes integer [default: 60, note: '게임 지속 시간 (분)']
+  scheduled_start timestamp [note: '예정 시작 시간']
+  rules json [default: '{}', note: '커스텀 규칙 (친구 초대 정보 포함)']
+  is_active boolean [default: true, note: '활성 상태']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '수정일시']
+  
+  Note: '게임 방 설정 테이블'
+}
+
+Table sessions {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  room_id uuid [not null, note: '방 ID']
+  status varchar(20) [default: 'waiting', note: '상태: waiting(대기중), active(진행중), finished(종료)']
+  started_at timestamp [note: '시작 시간']
+  ended_at timestamp [note: '종료 시간']
+  game_area_bounds json [default: '{}', note: '게임 영역 경계']
+  h3_resolution integer [default: 8, note: 'H3 해상도']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '수정일시']
+  
+  Note: '게임 세션 테이블'
+}
+
+Table teams {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  session_id uuid [not null, note: '세션 ID']
+  name varchar(100) [not null, note: '팀 이름']
+  color varchar(7) [not null, note: 'HEX 색상 코드']
+  score integer [default: 0, note: '점수 (점령한 hex 수)']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  
+  Note: '세션 내 팀 정보 테이블'
+}
+
+Table participants {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  session_id uuid [not null, note: '세션 ID']
+  user_id uuid [not null, note: '사용자 ID']
+  team_id uuid [note: '팀 ID']
+  status varchar(20) [default: 'joined', note: '상태: joined(참가), active(활동중), left(나감)']
+  last_lat double [note: '마지막 위도']
+  last_lng double [note: '마지막 경도']
+  last_h3_id varchar(20) [note: '마지막 H3 ID']
+  last_location_at timestamp [note: '마지막 위치 업데이트 시간']
+  joined_at timestamp [default: `CURRENT_TIMESTAMP`, note: '참가일시']
+  
+  Note: '세션 참가자 테이블'
+}
+
+Table hex_ownerships {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  session_id uuid [not null, note: '세션 ID']
+  h3_id varchar(20) [not null, note: 'H3 Hex ID']
+  team_id uuid [note: '소유 팀 ID']
+  claimed_at timestamp [default: `CURRENT_TIMESTAMP`, note: '점령 시간']
+  claimed_by_id uuid [note: '점령한 참가자 ID']
+  visit_count integer [default: 1, note: '방문 횟수 (효율 감소용)']
+  
+  Note: 'Hex 소유 정보 테이블'
+}
+
+Table event_logs {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  session_id uuid [not null, note: '세션 ID']
+  event_type varchar(20) [not null, note: '이벤트 타입: claim(점령), loop(루프 완성), join(참가), leave(나감), match_end(게임 종료)']
+  participant_id uuid [note: '참가자 ID']
+  team_id uuid [note: '팀 ID']
+  data json [default: '{}', note: '이벤트별 데이터']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  
+  Note: '이벤트 로그 테이블'
+}
+
+Table player_stats {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  session_id uuid [not null, note: '세션 ID']
+  participant_id uuid [not null, note: '참가자 ID']
+  distance_m double [default: 0.0, note: '이동 거리 (미터)']
+  duration_sec integer [default: 0, note: '활동 시간 (초)']
+  hexes_claimed integer [default: 0, note: '점령한 hex 수']
+  hexes_in_loops integer [default: 0, note: '루프에 포함된 hex 수']
+  is_mvp boolean [default: false, note: 'MVP 여부']
+  mvp_score double [default: 0.0, note: 'MVP 점수']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  updated_at timestamp [default: `CURRENT_TIMESTAMP`, note: '수정일시']
+  
+  Note: '플레이어 통계 테이블'
+}
+
+Table chat_messages {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  session_id uuid [not null, note: '세션 ID']
+  team_id uuid [note: '팀 ID (null이면 전체 세션 채팅)']
+  participant_id uuid [not null, note: '메시지를 보낸 참가자 ID']
+  message text [not null, note: '메시지 내용 (최대 500자)']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  
+  Note: '팀 채팅 메시지 테이블'
+}
+
+Table session_state_snapshots {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  session_id uuid [not null, note: '세션 ID']
+  snapshot_data json [not null, note: '전체 상태 JSON']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`, note: '생성일시']
+  
+  Note: '세션 상태 스냅샷 테이블 (복구용)'
+}
+
+// ============================================
+// 관계 (Relationships)
+// ============================================
+
+// users -> friendships (친구 요청 보낸 사람)
+Ref: friendships.requester_id > users.id [delete: cascade]
+
+// users -> friendships (친구 요청 받은 사람)
+Ref: friendships.addressee_id > users.id [delete: cascade]
+
+// users -> rooms (1:N)
+Ref: rooms.creator_id > users.id [delete: cascade]
+
+// rooms -> sessions (1:N)
+Ref: sessions.room_id > rooms.id [delete: cascade]
+
+// sessions -> teams (1:N)
+Ref: teams.session_id > sessions.id [delete: cascade]
+
+// sessions -> participants (1:N)
+Ref: participants.session_id > sessions.id [delete: cascade]
+
+// users -> participants (1:N)
+Ref: participants.user_id > users.id [delete: cascade]
+
+// teams -> participants (1:N)
+Ref: participants.team_id > teams.id [delete: set null]
+
+// sessions -> hex_ownerships (1:N)
+Ref: hex_ownerships.session_id > sessions.id [delete: cascade]
+
+// teams -> hex_ownerships (1:N)
+Ref: hex_ownerships.team_id > teams.id [delete: set null]
+
+// participants -> hex_ownerships (1:N)
+Ref: hex_ownerships.claimed_by_id > participants.id [delete: set null]
+
+// sessions -> event_logs (1:N)
+Ref: event_logs.session_id > sessions.id [delete: cascade]
+
+// participants -> event_logs (1:N)
+Ref: event_logs.participant_id > participants.id [delete: set null]
+
+// teams -> event_logs (1:N)
+Ref: event_logs.team_id > teams.id [delete: set null]
+
+// sessions -> player_stats (1:N)
+Ref: player_stats.session_id > sessions.id [delete: cascade]
+
+// participants -> player_stats (1:1)
+Ref: player_stats.participant_id > participants.id [delete: cascade]
+
+// sessions -> chat_messages (1:N)
+Ref: chat_messages.session_id > sessions.id [delete: cascade]
+
+// teams -> chat_messages (1:N)
+Ref: chat_messages.team_id > teams.id [delete: cascade]
+
+// participants -> chat_messages (1:N)
+Ref: chat_messages.participant_id > participants.id [delete: cascade]
+
+// sessions -> session_state_snapshots (1:N)
+Ref: session_state_snapshots.session_id > sessions.id [delete: cascade]

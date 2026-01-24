@@ -27,36 +27,25 @@
 - Flask-JWT-Extended (인증)
 - SQLite (개발용, 프로덕션에서는 PostgreSQL 권장)
 
-## 가상 환경 설정
+## Docker 설정
 
-### 1. 가상 환경 생성
+### Docker Compose로 실행 (권장)
+
 ```bash
+# Backend 디렉토리로 이동
 cd Backend
-python3 -m venv venv
-```
 
-### 2. 가상 환경 활성화
+# 서비스 시작
+docker-compose up -d
 
-**macOS/Linux:**
-```bash
-cd Backend
-source venv/bin/activate
-```
+# 마이그레이션
+docker-compose exec web python manage.py migrate
 
-**Windows:**
-```bash
-cd Backend
-venv\Scripts\activate
-```
+# 슈퍼유저 생성
+docker-compose exec web python manage.py createsuperuser
 
-### 3. 패키지 설치
-```bash
-pip install -r Backend/requirements.txt
-```
-
-### 4. 가상 환경 비활성화
-```bash
-deactivate
+# 로그 확인
+docker-compose logs -f web
 ```
 
 ## 프로젝트 구조
@@ -92,7 +81,8 @@ running/
 │   ├── config.py                # 설정 파일
 │   ├── app.py                   # Flask 앱 진입점
 │   ├── requirements.txt         # Python 의존성
-│   └── venv/                    # 가상 환경
+│   ├── Dockerfile               # Docker 이미지 설정
+│   └── docker-compose.yml       # Docker Compose 설정
 │
 ├── docs/                        # 프로젝트 문서
 ├── tests/                       # 테스트 코드
@@ -109,19 +99,16 @@ chmod +x scripts/setup.sh
 ./scripts/setup.sh
 ```
 
-### 2. Backend 실행
+### 2. Backend 실행 (Docker)
 ```bash
 # Backend 폴더로 이동
 cd Backend
 
-# 가상 환경 활성화
-source venv/bin/activate
+# Docker Compose로 서비스 시작
+docker-compose up -d
 
-# Backend 의존성 설치
-pip install -r requirements.txt
-
-# Backend 실행
-python app.py
+# 또는 개발 모드로 실행 (코드 변경 시 자동 반영)
+docker-compose up
 ```
 
 ### 3. Frontend 실행 (React Native)
@@ -145,10 +132,7 @@ npm run web      # 웹 브라우저
 1. **데이터베이스 초기화**
 ```bash
 cd Backend
-source venv/bin/activate
-flask db init          # 최초 1회만
-flask db migrate -m "Initial migration"
-flask db upgrade
+docker-compose exec web python manage.py migrate
 ```
 
 2. **환경 변수 설정** (선택사항)

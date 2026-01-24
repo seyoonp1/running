@@ -1,0 +1,64 @@
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+**/venv/
+**/env/
+**/ENV/
+**/.venv
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Static files (will be collected in container)
+staticfiles/
+static/
+
+# Media files (if any)
+media/
+
+# Docker files (don't copy into container)
+docker-compose.yml
+Dockerfile
+.dockerignore
+
