@@ -14,12 +14,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Collect static files
-RUN python manage.py collectstatic --noinput || true
+# Create staticfiles directory
+RUN mkdir -p /app/staticfiles
 
 # Expose port
 EXPOSE 8000
 
-# Run with daphne (ASGI server)
+# Default command (overridden by docker-compose)
+# collectstatic과 migrate는 docker-compose command에서 실행
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
-

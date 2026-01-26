@@ -133,10 +133,17 @@ SIMPLE_JWT = {
 }
 
 # CORS Settings
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    'CORS_ALLOWED_ORIGINS',
-    'http://localhost:19006,http://localhost:3000'
-).split(',')
+# CORS_ALLOW_ALL_ORIGINS=True 이면 모든 출처 허용
+# 그렇지 않으면 CORS_ALLOWED_ORIGINS에서 쉼표로 구분된 URL 목록 사용
+_cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+if _cors_origins == '*' or os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'False').lower() == 'true':
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = [
+        origin.strip() for origin in _cors_origins.split(',') 
+        if origin.strip() and origin.strip() != '*'
+    ] if _cors_origins else ['http://localhost:19006', 'http://localhost:3000']
 
 CORS_ALLOW_CREDENTIALS = True
 
