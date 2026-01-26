@@ -109,10 +109,10 @@ class Command(BaseCommand):
             participant, created = Participant.objects.get_or_create(
                 session=session,
                 user=user,
-                defaults={'team': team, 'status': 'joined'}
+                defaults={'team': team.room_team, 'status': 'joined'}
             )
             if not created:
-                participant.team = team
+                participant.team = team.room_team
                 participant.status = 'joined'
                 participant.save()
             

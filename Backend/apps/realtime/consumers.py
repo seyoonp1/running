@@ -1,27 +1,31 @@
 """
-WebSocket consumers
+WebSocket consumers - MVP 버전
+Room과 Participant 모델 사용 (Session 모델 제거됨)
 """
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.utils import timezone
-from apps.sessions.models import Session, Participant, HexOwnership, EventLog, Team
+from apps.rooms.models import Room, Participant, RunningRecord
 from apps.hexmap.h3_utils import latlng_to_h3
 from apps.hexmap.claim_validator import ClaimValidator
 from apps.hexmap.loop_detector import LoopDetector
 
 
-class SessionConsumer(AsyncWebsocketConsumer):
-    """Session WebSocket consumer"""
+class RoomConsumer(AsyncWebsocketConsumer):
+    """
+    Room WebSocket consumer
+    실시간 위치 업데이트, 점령 처리, 페인트볼 사용 등 처리
+    """
     
     async def connect(self):
-        self.session_id = self.scope['url_route']['kwargs']['session_id']
-        self.group_name = f'session_{self.session_id}'
+        self.room_id = self.scope['url_route']['kwargs']['room_id']
+        self.group_name = f'room_{self.room_id}'
         self.user = self.scope['user']
         
-        # Verify session exists and user is participant
-        session = await self.get_session()
-        if not session:
+        # 방 및 참가자 확인
+        room = await self.get_room()
+        if not room:
             await self.close()
             return
         
@@ -33,33 +37,39 @@ class SessionConsumer(AsyncWebsocketConsumer):
         self.participant_id = str(participant.id)
         self.claim_validator = ClaimValidator(self.participant_id)
         
-        # Join room group
+        # 그룹 참가
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
         
-        # Send join confirmation
+        # 연결 확인 메시지
         await self.send(text_data=json.dumps({
             'type': 'connection_established',
-            'session_id': self.session_id,
+            'room_id': self.room_id,
             'participant_id': self.participant_id
         }))
     
     async def disconnect(self, close_code):
-        # Leave room group
+        # 그룹에서 나가기
         await self.channel_layer.group_discard(self.group_name, self.channel_name)
     
     async def receive(self, text_data):
-        """Receive message from WebSocket"""
+        """WebSocket 메시지 수신"""
         try:
             data = json.loads(text_data)
             event_type = data.get('type')
             
             if event_type == 'loc':
+                # 위치 업데이트
                 await self.handle_location_update(data)
-            elif event_type == 'join_session':
-                await self.handle_join(data)
-            elif event_type == 'leave_session':
-                await self.handle_leave(data)
+            elif event_type == 'paintball':
+                # 페인트볼 사용
+                await self.handle_paintball(data)
+            elif event_type == 'start_recording':
+                # 기록 시작
+                await self.handle_start_recording()
+            elif event_type == 'stop_recording':
+                # 기록 종료
+                await self.handle_stop_recording(data)
         
         except json.JSONDecodeError:
             await self.send(text_data=json.dumps({
@@ -68,255 +78,440 @@ class SessionConsumer(AsyncWebsocketConsumer):
             }))
     
     async def handle_location_update(self, data):
-        """Handle location update"""
+        """위치 업데이트 처리"""
         lat = data.get('lat')
         lng = data.get('lng')
         accuracy = data.get('accuracy', 0)
         speed = data.get('speed', 0)
         timestamp = timezone.now()
         
-        if not lat or not lng:
+        if lat is None or lng is None:
             return
         
-        # Get session resolution
-        session = await self.get_session()
-        resolution = session.h3_resolution
+        # 방 정보 가져오기
+        room = await self.get_room()
+        if not room or room.status != 'active':
+            return
         
-        # Convert to H3
-        h3_id = latlng_to_h3(lat, lng, resolution)
-        
-        # Update participant location
-        await self.update_participant_location(lat, lng, h3_id, timestamp)
-        
-        # Validate claim
-        claimed_h3_id = await self.validate_claim(lat, lng, h3_id, timestamp)
-        
-        if claimed_h3_id:
-            # Process claim
-            await self.process_claim(claimed_h3_id)
-    
-    async def validate_claim(self, lat, lng, h3_id, timestamp):
-        """Validate hex claim"""
-        # Get participant
+        # 참가자 가져오기
         participant = await self.get_participant()
         if not participant:
-            return None
-        
-        # Add sample to validator
-        self.claim_validator.add_location_sample(lat, lng, h3_id, timestamp)
-        
-        # Check if claim is valid
-        claimed_h3_id = self.claim_validator.check_claim()
-        return claimed_h3_id
-    
-    async def process_claim(self, h3_id):
-        """Process hex claim"""
-        participant = await self.get_participant()
-        session = await self.get_session()
-        
-        if not participant or not participant.team:
             return
         
-        # Check if already owned
-        existing = await database_sync_to_async(HexOwnership.objects.filter(
-            session=session,
-            h3_id=h3_id
-        ).first)()
+        # H3 ID 계산
+        resolution = room.h3_resolution
+        h3_id = latlng_to_h3(lat, lng, resolution)
+        
+        # 위치 업데이트
+        await self.update_participant_location(lat, lng, h3_id, timestamp)
+        
+        # 위치 브로드캐스트
+        await self.channel_layer.group_send(
+            self.group_name,
+            {
+                'type': 'location_update',
+                'participant_id': self.participant_id,
+                'lat': lat,
+                'lng': lng,
+                'h3_id': h3_id,
+                'timestamp': timestamp.isoformat()
+            }
+        )
+        
+        # 기록 중인 경우에만 점령 처리
+        if participant.is_recording:
+            await self.process_claim_logic(lat, lng, h3_id, timestamp, participant, room)
+    
+    async def process_claim_logic(self, lat, lng, h3_id, timestamp, participant, room):
+        """점령 로직 처리"""
+        # 클레임 검증기에 샘플 추가
+        self.claim_validator.add_location_sample(lat, lng, h3_id, timestamp)
+        
+        # 클레임 검증
+        claimed_h3_id = self.claim_validator.check_claim()
+        
+        if claimed_h3_id:
+            await self.process_claim(claimed_h3_id, participant, room)
+    
+    async def process_claim(self, h3_id, participant, room):
+        """점령 처리"""
+        team = participant.team
+        user_id = str(participant.user_id)
+        
+        # 현재 소유 상태 확인
+        current_ownerships = room.current_hex_ownerships or {}
+        existing = current_ownerships.get(h3_id)
+        
+        gauge_to_add = 0
+        claimed = False
         
         if existing:
-            # Revisit - update visit count
-            existing.visit_count += 1
-            await database_sync_to_async(existing.save)()
-            efficiency = await self.calculate_efficiency(existing.visit_count)
-        else:
-            # New claim
-            existing = await database_sync_to_async(HexOwnership.objects.create)(
-                session=session,
-                h3_id=h3_id,
-                team=participant.team,
-                claimed_by=participant,
-                visit_count=1
-            )
-            efficiency = 1.0
-        
-        # Update team score
-        await self.update_team_score(participant.team)
-        
-        # Log event
-        await database_sync_to_async(EventLog.objects.create)(
-            session=session,
-            event_type='claim',
-            participant=participant,
-            team=participant.team,
-            data={'h3_id': h3_id, 'visit_count': existing.visit_count, 'efficiency': efficiency}
-        )
-        
-        # Broadcast claim
-        await self.channel_layer.group_send(
-            self.group_name,
-            {
-                'type': 'claim_hex',
-                'participant_id': str(participant.id),
-                'team_id': str(participant.team.id),
-                'h3_id': h3_id,
-                'visit_count': existing.visit_count,
-                'efficiency': efficiency,
-                'timestamp': timezone.now().isoformat()
-            }
-        )
-        
-        # Check for loops
-        await self.check_loops(participant.team)
-    
-    async def check_loops(self, team):
-        """Check for completed loops"""
-        session = await self.get_session()
-        detector = LoopDetector(str(session.id))
-        loop_result = await database_sync_to_async(detector.detect_loop)(str(team.id))
-        
-        if loop_result:
-            # Process loop interior
-            await self.process_loop(team, loop_result)
-    
-    async def process_loop(self, team, loop_result):
-        """Process completed loop"""
-        session = await self.get_session()
-        loop_h3_ids = loop_result['loop_h3_ids']
-        interior_h3_ids = loop_result['interior_h3_ids']
-        
-        # Claim interior hexes
-        for h3_id in interior_h3_ids:
-            await database_sync_to_async(HexOwnership.objects.update_or_create)(
-                session=session,
-                h3_id=h3_id,
-                defaults={
+            if existing.get('team') == team:
+                # 같은 팀의 땅 → +60 게이지
+                gauge_to_add = 60
+            else:
+                # 상대 팀 땅 점령
+                current_ownerships[h3_id] = {
                     'team': team,
-                    'visit_count': 1
+                    'user_id': user_id,
+                    'claimed_at': timezone.now().isoformat()
+                }
+                claimed = True
+        else:
+            # 빈 땅 점령
+            current_ownerships[h3_id] = {
+                'team': team,
+                'user_id': user_id,
+                'claimed_at': timezone.now().isoformat()
+            }
+            claimed = True
+        
+        # 게이지 추가
+        if gauge_to_add > 0:
+            await self.add_gauge(participant, gauge_to_add)
+        
+        # 점령 저장
+        if claimed:
+            await self.save_hex_ownerships(room, current_ownerships)
+            
+            # 출석 체크 (다른 hex로 이동)
+            await self.check_attendance(participant, h3_id)
+            
+            # 점령 브로드캐스트
+            await self.channel_layer.group_send(
+                self.group_name,
+                {
+                    'type': 'hex_claimed',
+                    'participant_id': self.participant_id,
+                    'team': team,
+                    'h3_id': h3_id,
+                    'timestamp': timezone.now().isoformat()
                 }
             )
+            
+            # 루프 감지 및 내부 hex 자동 점령 (새로 점령한 hex가 포함된 루프만 찾기)
+            await self.check_and_claim_loop(team, room, participant, h3_id)
+            
+            # 점수 업데이트 브로드캐스트
+            await self.broadcast_score_update(room)
+    
+    async def handle_paintball(self, data):
+        """페인트볼 사용 처리"""
+        paintball_type = data.get('paintball_type', 'normal')  # normal 또는 super
+        target_h3_id = data.get('target_h3_id')
         
-        # Update team score
-        await self.update_team_score(team)
+        if not target_h3_id:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'target_h3_id가 필요합니다.'
+            }))
+            return
         
-        # Log event
-        await database_sync_to_async(EventLog.objects.create)(
-            session=session,
-            event_type='loop',
-            team=team,
-            data={
-                'loop_h3_ids': loop_h3_ids,
-                'interior_h3_ids': interior_h3_ids,
-                'interior_count': len(interior_h3_ids)
-            }
-        )
+        participant = await self.get_participant()
+        room = await self.get_room()
         
-        # Broadcast loop
+        if not participant or not room or room.status != 'active':
+            return
+        
+        # 페인트볼 사용
+        if paintball_type == 'super':
+            success = await self.use_super_paintball(participant)
+        else:
+            success = await self.use_paintball(participant)
+        
+        if not success:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': '페인트볼이 부족합니다.'
+            }))
+            return
+        
+        # 타겟 hex 점령
+        team = participant.team
+        user_id = str(participant.user_id)
+        
+        current_ownerships = room.current_hex_ownerships or {}
+        current_ownerships[target_h3_id] = {
+            'team': team,
+            'user_id': user_id,
+            'claimed_at': timezone.now().isoformat()
+        }
+        
+        await self.save_hex_ownerships(room, current_ownerships)
+        
+        # 브로드캐스트
         await self.channel_layer.group_send(
             self.group_name,
             {
-                'type': 'loop_complete',
-                'team_id': str(team.id),
-                'loop_h3_ids': loop_h3_ids,
-                'interior_h3_ids': interior_h3_ids,
-                'interior_count': len(interior_h3_ids),
+                'type': 'paintball_used',
+                'participant_id': self.participant_id,
+                'team': team,
+                'paintball_type': paintball_type,
+                'target_h3_id': target_h3_id,
                 'timestamp': timezone.now().isoformat()
             }
         )
+        
+        # 루프 감지 및 내부 hex 자동 점령 (페인트볼로 점령한 hex가 포함된 루프만 찾기)
+        await self.check_and_claim_loop(team, room, participant, target_h3_id)
+        
+        await self.broadcast_score_update(room)
     
-    async def update_team_score(self, team):
-        """Update team score"""
-        session = await self.get_session()
-        count = await database_sync_to_async(HexOwnership.objects.filter(
-            session=session,
-            team=team
-        ).count)()
+    async def handle_start_recording(self):
+        """기록 시작 처리"""
+        participant = await self.get_participant()
+        room = await self.get_room()
         
-        team.score = count
-        await database_sync_to_async(team.save)()
+        if not participant or not room:
+            return
         
-        # Broadcast score update
-        await self.broadcast_score_update()
+        if participant.is_recording:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': '이미 기록 중입니다.'
+            }))
+            return
+        
+        # 기록 시작
+        await database_sync_to_async(lambda: (
+            setattr(participant, 'is_recording', True),
+            participant.save(update_fields=['is_recording'])
+        )[-1])()
+        
+        # 러닝 기록 생성
+        record = await database_sync_to_async(RunningRecord.objects.create)(
+            user=participant.user,
+            room=room,
+            participant=participant,
+            started_at=timezone.now()
+        )
+        
+        await self.send(text_data=json.dumps({
+            'type': 'recording_started',
+            'record_id': str(record.id),
+            'started_at': record.started_at.isoformat()
+        }))
     
-    async def broadcast_score_update(self):
-        """Broadcast score update"""
-        session = await self.get_session()
-        teams = await database_sync_to_async(list)(session.teams.all())
+    async def handle_stop_recording(self, data):
+        """기록 종료 처리"""
+        participant = await self.get_participant()
         
-        scores = []
-        for team in teams:
-            scores.append({
-                'team_id': str(team.id),
-                'team_name': team.name,
-                'hex_count': team.score,
-            })
+        if not participant or not participant.is_recording:
+            return
+        
+        duration_seconds = data.get('duration_seconds', 0)
+        distance_meters = data.get('distance_meters', 0)
+        
+        # 기록 종료
+        await database_sync_to_async(lambda: (
+            setattr(participant, 'is_recording', False),
+            participant.save(update_fields=['is_recording'])
+        )[-1])()
+        
+        # 마지막 러닝 기록 업데이트
+        record = await database_sync_to_async(
+            lambda: RunningRecord.objects.filter(
+                participant=participant,
+                ended_at__isnull=True
+            ).order_by('-started_at').first()
+        )()
+        
+        if record:
+            record.duration_seconds = duration_seconds
+            record.distance_meters = distance_meters
+            record.ended_at = timezone.now()
+            record.calculate_pace()
+            await database_sync_to_async(record.save)()
+            
+            await self.send(text_data=json.dumps({
+                'type': 'recording_stopped',
+                'record_id': str(record.id),
+                'duration_seconds': record.duration_seconds,
+                'distance_meters': record.distance_meters,
+                'avg_pace_seconds_per_km': record.avg_pace_seconds_per_km
+            }))
+    
+    async def broadcast_score_update(self, room):
+        """점수 업데이트 브로드캐스트"""
+        ownerships = room.current_hex_ownerships or {}
+        
+        team_a_count = sum(1 for h in ownerships.values() if h.get('team') == 'A')
+        team_b_count = sum(1 for h in ownerships.values() if h.get('team') == 'B')
         
         await self.channel_layer.group_send(
             self.group_name,
             {
                 'type': 'score_update',
-                'scores': scores,
+                'team_a_count': team_a_count,
+                'team_b_count': team_b_count,
                 'timestamp': timezone.now().isoformat()
             }
         )
     
-    async def handle_join(self, data):
-        """Handle join event"""
-        # Already handled in connect
-        pass
+    # Database helper methods
     
-    async def handle_leave(self, data):
-        """Handle leave event"""
-        participant = await self.get_participant()
-        if participant:
-            participant.status = 'left'
-            await database_sync_to_async(participant.save)()
-    
-    # WebSocket event handlers
-    async def claim_hex(self, event):
-        """Send claim event to WebSocket"""
-        await self.send(text_data=json.dumps(event))
-    
-    async def loop_complete(self, event):
-        """Send loop event to WebSocket"""
-        await self.send(text_data=json.dumps(event))
-    
-    async def score_update(self, event):
-        """Send score update to WebSocket"""
-        await self.send(text_data=json.dumps(event))
-    
-    async def match_end(self, event):
-        """Send match end event to WebSocket"""
-        await self.send(text_data=json.dumps(event))
-    
-    # Database helpers
     @database_sync_to_async
-    def get_session(self):
+    def get_room(self):
         try:
-            return Session.objects.get(id=self.session_id)
-        except Session.DoesNotExist:
+            return Room.objects.get(id=self.room_id)
+        except Room.DoesNotExist:
             return None
     
     @database_sync_to_async
     def get_participant(self):
         try:
-            session = Session.objects.get(id=self.session_id)
-            return Participant.objects.get(session=session, user=self.user)
-        except (Session.DoesNotExist, Participant.DoesNotExist):
+            return Participant.objects.get(room_id=self.room_id, user=self.user)
+        except Participant.DoesNotExist:
             return None
     
     @database_sync_to_async
     def update_participant_location(self, lat, lng, h3_id, timestamp):
-        participant = Participant.objects.get(id=self.participant_id)
-        participant.last_lat = lat
-        participant.last_lng = lng
-        participant.last_h3_id = h3_id
-        participant.last_location_at = timestamp
-        participant.status = 'active'
-        participant.save()
+        try:
+            participant = Participant.objects.get(room_id=self.room_id, user=self.user)
+            participant.last_lat = lat
+            participant.last_lng = lng
+            participant.last_h3_id = h3_id
+            participant.last_location_at = timestamp
+            participant.save(update_fields=['last_lat', 'last_lng', 'last_h3_id', 'last_location_at'])
+        except Participant.DoesNotExist:
+            pass
     
     @database_sync_to_async
-    def calculate_efficiency(self, visit_count):
-        from django.conf import settings
-        efficiency_map = settings.GAME_REVISIT_EFFICIENCY
-        return efficiency_map.get(visit_count, efficiency_map.get(3, 0.6))
-
+    def add_gauge(self, participant, amount):
+        participant.add_gauge(amount)
+    
+    @database_sync_to_async
+    def use_paintball(self, participant):
+        return participant.use_paintball()
+    
+    @database_sync_to_async
+    def use_super_paintball(self, participant):
+        return participant.use_super_paintball()
+    
+    @database_sync_to_async
+    def save_hex_ownerships(self, room, ownerships):
+        room.current_hex_ownerships = ownerships
+        room.save(update_fields=['current_hex_ownerships'])
+    
+    @database_sync_to_async
+    def check_attendance(self, participant, new_h3_id):
+        """출석 체크 (다른 hex로 이동 시)"""
+        today = timezone.now().date()
+        
+        if participant.last_h3_id and participant.last_h3_id != new_h3_id:
+            if participant.last_attendance_date != today:
+                # 연속 출석 확인
+                if participant.last_attendance_date:
+                    days_diff = (today - participant.last_attendance_date).days
+                    if days_diff == 1:
+                        participant.consecutive_attendance_days += 1
+                    else:
+                        participant.consecutive_attendance_days = 1
+                else:
+                    participant.consecutive_attendance_days = 1
+                
+                # 출석 보상 계산 (2일: +2, 3일: +3, ..., 최대 +7)
+                bonus = min(participant.consecutive_attendance_days, 7)
+                if bonus >= 2:
+                    participant.paintball_count += bonus
+                
+                participant.last_attendance_date = today
+                participant.save(update_fields=[
+                    'consecutive_attendance_days', 
+                    'last_attendance_date',
+                    'paintball_count'
+                ])
+    
+    async def check_and_claim_loop(self, team, room, participant, new_hex_id):
+        """루프 감지 및 내부 hex 자동 점령"""
+        # 새로 점령한 hex가 포함된 루프만 찾기
+        loop_result = await self.detect_loop(team, room, new_hex_id)
+        
+        if loop_result and loop_result.get('interior_h3_ids'):
+            # 내부 hex 자동 점령
+            await self.claim_interior_hexes(loop_result, participant, room)
+    
+    @database_sync_to_async
+    def detect_loop(self, team, room, new_hex_id=None):
+        """루프 감지 (동기 함수)"""
+        detector = LoopDetector(str(room.id))
+        current_ownerships = room.current_hex_ownerships or {}
+        return detector.detect_loop(team, current_ownerships, new_hex_id)
+    
+    async def claim_interior_hexes(self, loop_result, participant, room):
+        """루프 내부 hex 자동 점령"""
+        interior_h3_ids = loop_result.get('interior_h3_ids', [])
+        loop_h3_ids = loop_result.get('loop_h3_ids', [])
+        
+        if not interior_h3_ids:
+            return
+        
+        # 최신 room 객체 가져오기
+        room = await self.get_room()
+        if not room:
+            return
+        
+        team = participant.team
+        user_id = str(participant.user_id)
+        
+        # 현재 소유 상태 가져오기 (최신 상태)
+        current_ownerships = room.current_hex_ownerships or {}
+        claimed_count = 0
+        
+        # 내부 hex들을 자동 점령
+        for h3_id in interior_h3_ids:
+            # 이미 점령된 hex는 건너뛰기
+            if h3_id in current_ownerships:
+                continue
+            
+            current_ownerships[h3_id] = {
+                'team': team,
+                'user_id': user_id,
+                'claimed_at': timezone.now().isoformat(),
+                'claimed_by': 'loop'  # 루프로 인한 자동 점령 표시
+            }
+            claimed_count += 1
+        
+        if claimed_count > 0:
+            # 점령 상태 저장
+            await self.save_hex_ownerships(room, current_ownerships)
+            
+            # 루프 완성 이벤트 브로드캐스트
+            await self.channel_layer.group_send(
+                self.group_name,
+                {
+                    'type': 'loop_complete',
+                    'participant_id': self.participant_id,
+                    'team': team,
+                    'loop_h3_ids': loop_h3_ids,
+                    'interior_h3_ids': interior_h3_ids,
+                    'claimed_count': claimed_count,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+    
+    # Event handlers (channel layer callbacks)
+    
+    async def location_update(self, event):
+        """위치 업데이트 브로드캐스트"""
+        await self.send(text_data=json.dumps(event))
+    
+    async def hex_claimed(self, event):
+        """점령 브로드캐스트"""
+        await self.send(text_data=json.dumps(event))
+    
+    async def paintball_used(self, event):
+        """페인트볼 사용 브로드캐스트"""
+        await self.send(text_data=json.dumps(event))
+    
+    async def score_update(self, event):
+        """점수 업데이트 브로드캐스트"""
+        await self.send(text_data=json.dumps(event))
+    
+    async def game_ended(self, event):
+        """게임 종료 브로드캐스트"""
+        await self.send(text_data=json.dumps(event))
+    
+    async def loop_complete(self, event):
+        """루프 완성 브로드캐스트"""
+        await self.send(text_data=json.dumps(event))

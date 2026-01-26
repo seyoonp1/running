@@ -66,31 +66,8 @@ services:
       - app-network
     restart: unless-stopped
 
-  # Node.js Socket.IO Server
-  socketio:
-    build: ./socketio-server
-    ports:
-      - "3000:3000"
-    environment:
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=hexgame
-      - DB_USER=hexgame
-      - DB_PASSWORD=hexgame
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - JWT_SECRET=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - CORS_ORIGIN=${CORS_ALLOWED_ORIGINS:-*}
-      - PORT=3000
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - app-network
-    restart: unless-stopped
+  # Socket.IO 서버는 MVP에서 사용하지 않음 (Django Channels 사용)
+  # WebSocket은 Django Channels를 통해 ws://{host}/ws/room/{room_id}/ 로 접근
 
   # Nginx Reverse Proxy
   nginx:
@@ -105,7 +82,6 @@ services:
       # - ./nginx/ssl:/etc/letsencrypt:ro
     depends_on:
       - django
-      - socketio
     networks:
       - app-network
     restart: unless-stopped

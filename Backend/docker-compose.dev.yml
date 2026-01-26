@@ -1,7 +1,6 @@
-version: '3.8'
-
 # 로컬 개발용 Docker Compose 설정
-# nginx 없이 직접 포트로 접근 (http://localhost:8000, http://localhost:3000)
+# nginx 없이 직접 포트로 접근 (http://localhost:8000)
+# WebSocket: ws://localhost:8000/ws/room/{room_id}/
 
 services:
   # PostgreSQL Database
@@ -32,10 +31,14 @@ services:
       timeout: 5s
       retries: 5
 
-  # Django API Server (개발 모드)
+  # Django API Server (개발 모드 - daphne 사용으로 WebSocket 지원)
   django:
     build: .
-    command: python manage.py runserver 0.0.0.0:8000
+    command: >
+      sh -c "python manage.py makemigrations --noinput &&
+             python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             daphne -b 0.0.0.0 -p 8000 config.asgi:application"
     volumes:
       - .:/app
     ports:
@@ -59,35 +62,8 @@ services:
       redis:
         condition: service_healthy
 
-  # Node.js Socket.IO Server (개발 모드)
-  socketio:
-    build: 
-      context: ./socketio-server
-      dockerfile: Dockerfile
-    command: npm run dev
-    volumes:
-      - ./socketio-server:/app
-      - /app/node_modules
-    ports:
-      - "3000:3000"
-    environment:
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=hexgame
-      - DB_USER=hexgame
-      - DB_PASSWORD=hexgame
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - JWT_SECRET=dev-secret-key-change-in-production
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - CORS_ORIGIN=http://localhost:19006,http://localhost:3000,http://127.0.0.1:19006
-      - PORT=3000
-      - NODE_ENV=development
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+  # Socket.IO 서버는 MVP에서 사용하지 않음 (Django Channels 사용)
+  # WebSocket은 Django Channels를 통해 ws://localhost:8000/ws/room/{room_id}/ 로 접근
 
 volumes:
   postgres_data:

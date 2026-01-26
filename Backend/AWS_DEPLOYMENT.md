@@ -190,34 +190,7 @@ aws rds create-db-snapshot \
 - Django 로그 → CloudWatch Logs
 - 구조화된 JSON 로깅
 
-## 11. 장애 복구
-
-### 11.1 SessionStateSnapshot
-- 5분마다 자동 생성
-- EventLog 기반 복구 가능
-
-### 11.2 복구 스크립트
-```python
-# apps/sessions/management/commands/recover_session.py
-from apps.sessions.models import Session, SessionStateSnapshot, EventLog
-
-def recover_session(session_id):
-    # 1. 최신 스냅샷 로드
-    snapshot = SessionStateSnapshot.objects.filter(
-        session_id=session_id
-    ).latest('created_at')
-    
-    # 2. 스냅샷 이후 이벤트 재적용
-    events = EventLog.objects.filter(
-        session_id=session_id,
-        created_at__gt=snapshot.created_at
-    ).order_by('created_at')
-    
-    # 3. 상태 복구
-    # ... (구현 필요)
-```
-
-## 12. 비용 최적화 (MVP)
+## 11. 비용 최적화 (MVP)
 
 ### 12.1 인스턴스 크기
 - EC2: t3.medium (~$30/월)

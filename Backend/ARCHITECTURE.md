@@ -232,7 +232,7 @@ class User(AbstractUser):
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    is_active = models.BooleanField(default=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ready')
 ```
 
 #### Room (방 설정)
@@ -246,7 +246,7 @@ class Room(models.Model):
     game_duration_minutes = models.IntegerField(default=60)
     scheduled_start = models.DateTimeField(null=True, blank=True)
     rules = models.JSONField(default=dict)  # 커스텀 규칙
-    is_active = models.BooleanField(default=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ready')
     created_at = models.DateTimeField(auto_now_add=True)
 ```
 
@@ -356,16 +356,6 @@ class PlayerStats(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 ```
 
-#### SessionStateSnapshot (상태 스냅샷)
-```python
-class SessionStateSnapshot(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='snapshots')
-    snapshot_data = models.JSONField()  # 전체 상태 JSON
-    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
-```
-
----
 
 ## 5. WebSocket 이벤트 정의
 
@@ -1011,7 +1001,6 @@ CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
 - [ ] 알람 설정 (CPU > 80%, 메모리 > 90%)
 
 ### 11.4 장애 복구
-- [ ] SessionStateSnapshot 주기적 생성 (5분마다)
 - [ ] EventLog 기반 상태 복구 스크립트
 - [ ] Redis 장애 시 DB 기반 복구
 - [ ] 서버 재시작 시 자동 복구 프로세스

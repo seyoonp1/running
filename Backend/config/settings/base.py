@@ -29,7 +29,7 @@ INSTALLED_APPS = [
     # Local apps
     'apps.accounts',
     'apps.rooms',
-    'apps.sessions',
+    # 'apps.sessions',  # MVP에서 Session이 Room에 병합되어 사용하지 않음
     'apps.realtime',
     'apps.hexmap',
     'apps.leaderboard',
@@ -40,6 +40,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',  # Django Admin, 세션 기반 기능에 필수
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -174,7 +175,7 @@ LOGGING = {
             'style': '{',
         },
         'json': {
-            'format': '{"level": "{levelname}", "time": "{asctime}", "module": "{module}", "message": "{message}"}',
+            'format': '{{"level": "{levelname}", "time": "{asctime}", "module": "{module}", "message": "{message}"}}',
             'style': '{',
         },
     },

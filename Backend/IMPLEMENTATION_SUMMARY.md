@@ -23,7 +23,6 @@
 - [x] HexOwnership (Hex 소유)
 - [x] EventLog (이벤트 로그)
 - [x] PlayerStats (플레이어 통계)
-- [x] SessionStateSnapshot (상태 스냅샷)
 
 ### 4. H3 헥사곤 시스템
 - [x] lat/lng → H3 변환 유틸리티
@@ -72,7 +71,7 @@
 ### 모델
 - `apps/accounts/models.py` - User
 - `apps/rooms/models.py` - Room
-- `apps/sessions/models.py` - Session, Team, Participant, HexOwnership, EventLog, PlayerStats, SessionStateSnapshot
+- `apps/sessions/models.py` - Session, Team, Participant, HexOwnership, EventLog, PlayerStats
 
 ### WebSocket
 - `apps/realtime/consumers.py` - SessionConsumer
