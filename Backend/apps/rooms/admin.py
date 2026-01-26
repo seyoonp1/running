@@ -52,7 +52,7 @@ class ParticipantAdmin(admin.ModelAdmin):
     list_display = ['user', 'room', 'team', 'is_host', 'is_recording', 'paintball_count', 'super_paintball_count']
     list_filter = ['team', 'is_host', 'is_recording', 'room__status']
     search_fields = ['user__username', 'room__name']
-    readonly_fields = ['id', 'created_at', 'updated_at']
+    readonly_fields = ['id', 'joined_at']
 
 
 @admin.register(RunningRecord)
