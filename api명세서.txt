@@ -1,0 +1,1243 @@
+# Running App API 명세서 (MVP)
+
+Nike Run Club + 땅따먹기 게임
+
+---
+
+## 게임 개요
+
+GPS 기반 러닝 "땅따먹기" 게임. H3 헥사곤 그리드 시스템을 사용하여 팀(A/B)끼리 영역을 점령하는 경쟁 게임.
+
+---
+
+## 핵심 게임 규칙
+
+### 1. 점령 규칙
+- **기본 규칙 1**: 남의 땅(또는 빈 땅)을 지나면 땅 선점
+- **기본 규칙 2**: 이미 소유한 땅을 지나면 +60 게이지
+- **Special 1**: 여러 명이 같이 새로운 땅으로 움직일 경우
+  - 선착순으로 한 명이 그 지역을 점령 (기본 규칙 1)
+  - 나머지는 60 게이지 획득 (기본 규칙 2)
+- **Special 2**: 여러 명이 같이 소유한 땅으로 움직일 경우
+  - 각자 60 게이지 획득 (기본 규칙 2)
+
+### 2. 페인트볼 시스템
+- 게이지 바: 100이 찰 때마다 페인트볼 +1
+- **페인트볼**: k-ring(1) 범위의 hex 1개 칠하기
+- **슈퍼 페인트볼**: k-ring(2) 범위의 hex 1개 칠하기
+- 페인트볼 3개 ↔ 슈퍼 페인트볼 1개 교환 가능
+
+### 3. 출석 보상
+- 연속 이틀: +2 페인트볼
+- 연속 삼일: +3 페인트볼
+- 연속 사일: +4 페인트볼
+- 연속 최대 +7 페인트볼
+- 출석 기준: 다른 hex로 이동 (기록 중일 때)
+
+### 4. 승리 조건
+- 종료 시점(end_date)에 점령한 영역이 넓은 팀 승리
+- 팀 내부 승리 보상 동일
+- MVP(가장 많은 땅을 점령한 사용자)에게 추가 보상
+
+### 5. H3 헥사곤 시스템
+- H3 해상도: Resolution 8 사용
+- 지도는 육각형 그리드(헥사곤)로 분할
+- 특정 속도 이상이면 기록 불가 (부정 방지)
+
+---
+
+## 방(Room) 시스템
+
+### 게임 구역
+- 개발자가 미리 지정한 게임 구역 목록에서 선택
+- 각 구역은 이름, 도시, 경계(bounds), H3 해상도 정보를 포함
+- 구역은 관리자가 활성화/비활성화할 수 있음
+
+### 방 생성
+- 방장이 설정: 방 이름, 총 인원수(짝수), 시작 날짜, 종료 날짜, 게임 구역 선택
+- 게임 구역은 미리 정의된 목록에서 선택 (직접 입력 불가)
+- 방 생성 시 A팀/B팀 자동 생성 (각각 총 인원의 절반)
+- 방장은 A팀으로 자동 배정
+- 초대 코드 자동 생성
+
+### 방 상태
+- **ready**: 준비 중 (참가자 입장/퇴장 가능, 팀 변경 가능)
+- **active**: 진행 중 (입장/퇴장 불가)
+- **finished**: 종료 (승리팀 결정됨)
+
+### 방 참가 규칙
+- ready 상태에서만 참가 가능
+- 팀 정원(총 인원의 절반)이 안 찼을 때만 해당 팀 참가 가능
+- 방장이 나가면 남은 플레이어 중 한 명에게 방장 위임
+- 모든 플레이어가 나가면 방 삭제
+
+### 게임 시작
+- 방장이 시작 버튼 클릭
+- start_date 이후에 active 상태로 변경
+- active 상태에서 참가자들은 게임 화면의 시작 버튼으로 기록 시작
+
+---
+
+## 기록(Running Record) 시스템
+
+### 기록 단위
+- 시작 버튼 클릭 ~ 종료 버튼 클릭 = 1개 기록
+- 기록 중일 때만 땅따먹기 가능
+
+### 기록 데이터
+- 시간 (duration_seconds)
+- 거리 (distance_meters)
+- 평균 페이스 (avg_pace_seconds_per_km)
+
+### 통계 집계
+- 년/월/주 단위로 집계
+- 총 거리, 런닝 횟수, 평균 페이스, 총 시간
+
+---
+
+## REST API 목록
+
+### 인증 API
+
+#### 1. 회원가입
+**POST** `/api/auth/register/`
+
+**언제 쓰이는가**: 
+- 앱 최초 실행 시 회원가입 화면에서 사용
+- 새로운 사용자가 서비스에 가입할 때
+
+**제약 조건**:
+- `username`은 시스템 내에서 고유해야 함 (중복 불가)
+- `email`은 시스템 내에서 고유해야 함 (중복 불가)
+- `password`는 최소 길이 제한 필요 (보안 정책에 따라)
+- 인증 없이 접근 가능
+
+```json
+Request:
+{
+  "username": "runner1",
+  "email": "runner1@example.com",
+  "password": "securepassword123"
+}
+
+Response:
+{
+  "id": "uuid",
+  "username": "runner1",
+  "email": "runner1@example.com",
+  "created_at": "2026-01-25T00:00:00Z"
+}
+```
+
+#### 2. 로그인
+**POST** `/api/auth/login/`
+
+**언제 쓰이는가**: 
+- 앱 실행 시 로그인 화면에서 사용
+- 토큰이 만료되어 재로그인이 필요할 때
+- 다른 기기에서 로그인할 때
+
+**제약 조건**:
+- `username`과 `password`가 일치해야 함
+- 계정이 활성화(`is_active=true`) 상태여야 함
+- 인증 없이 접근 가능
+- 로그인 실패 시 일정 횟수 제한 후 일시적 잠금 가능
+
+```json
+Request:
+{
+  "username": "runner1",
+  "password": "securepassword123"
+}
+
+Response:
+{
+  "access": "jwt_access_token",
+  "refresh": "jwt_refresh_token",
+  "user": {
+    "id": "uuid",
+    "username": "runner1",
+    "email": "runner1@example.com"
+  }
+}
+```
+
+#### 3. 토큰 갱신
+**POST** `/api/auth/refresh/`
+
+**언제 쓰이는가**: 
+- `access` 토큰이 만료되었을 때 자동으로 호출
+- 앱이 백그라운드에서 돌아왔을 때 토큰 유효성 확인 후 필요 시 호출
+- API 요청 시 401 에러를 받았을 때 재시도 전 호출
+
+**제약 조건**:
+- 유효한 `refresh` 토큰이 필요함
+- `refresh` 토큰도 만료되면 재로그인 필요
+- 인증 없이 접근 가능 (refresh 토큰만으로)
+
+```json
+Request:
+{
+  "refresh": "jwt_refresh_token"
+}
+
+Response:
+{
+  "access": "new_jwt_access_token"
+}
+```
+
+#### 4. 내 정보 조회
+**GET** `/api/auth/me/`
+
+**언제 쓰이는가**: 
+- 프로필 화면 진입 시
+- 앱 시작 시 현재 로그인한 사용자 정보 확인
+- 헤더나 사이드바에 사용자 정보 표시할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 자신의 정보만 조회 가능
+
+```json
+Response:
+{
+  "id": "uuid",
+  "username": "runner1",
+  "email": "runner1@example.com",
+  "created_at": "2026-01-25T00:00:00Z"
+}
+```
+
+---
+
+### 방 API
+
+#### 5. 게임 구역 목록 조회
+**GET** `/api/game-areas/`
+
+**언제 쓰이는가**: 
+- 방 생성 화면에서 게임을 진행할 구역을 선택할 때
+- 사용 가능한 게임 구역 목록을 확인할 때
+- 구역별 상세 정보를 확인할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 활성화된 구역만 반환 (관리자가 비활성화한 구역 제외)
+- 쿼리 파라미터: `city`(도시별 필터링), `page`, `page_size`
+
+```json
+Response:
+{
+  "count": 10,
+  "results": [
+    {
+      "id": "uuid",
+      "name": "한강공원",
+      "city": "서울",
+      "description": "한강을 따라 이어지는 공원 구역",
+      "bounds": {
+        "type": "Polygon",
+        "coordinates": [[[127.0, 37.5], [127.1, 37.5], [127.1, 37.6], [127.0, 37.6], [127.0, 37.5]]]
+      },
+      "h3_resolution": 8,
+      "is_active": true
+    },
+    {
+      "id": "uuid",
+      "name": "올림픽공원",
+      "city": "서울",
+      "description": "올림픽공원 일대",
+      "bounds": {...},
+      "h3_resolution": 8,
+      "is_active": true
+    }
+  ]
+}
+```
+
+#### 6. 방 생성
+**POST** `/api/rooms/`
+
+**언제 쓰이는가**: 
+- 메인 화면에서 "방 만들기" 버튼 클릭 시
+- 새로운 게임을 시작하고 싶을 때
+- 친구들과 함께 게임을 준비할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- `total_participants`는 짝수여야 함 (A팀/B팀 균등 분배)
+- `start_date`는 오늘 이후여야 함
+- `end_date`는 `start_date` 이후여야 함
+- `game_area_id`는 유효한 게임 구역 ID여야 하며, 해당 구역이 활성화(`is_active=true`)되어 있어야 함
+- 생성자는 자동으로 방장(`is_host=true`)이 되며 A팀에 배정됨
+- 방 생성 시 6자리 고유 초대 코드 자동 생성
+- 방은 `ready` 상태로 시작됨
+- 선택한 구역의 `bounds`와 `h3_resolution`이 자동으로 방에 적용됨
+
+```json
+Request:
+{
+  "name": "한강 러닝 대결",
+  "total_participants": 4,
+  "start_date": "2026-02-01",
+  "end_date": "2026-02-28",
+  "game_area_id": "uuid"  // 게임 구역 ID (필수)
+}
+
+Response:
+{
+  "id": "uuid",
+  "name": "한강 러닝 대결",
+  "creator": {"id": "uuid", "username": "runner1"},
+  "total_participants": 4,
+  "current_participants": 1,
+  "team_a_count": 1,
+  "team_b_count": 0,
+  "start_date": "2026-02-01",
+  "end_date": "2026-02-28",
+  "status": "ready",
+  "invite_code": "ABC123",
+  "game_area": {
+    "id": "uuid",
+    "name": "한강공원",
+    "city": "서울",
+    "bounds": {...},
+    "h3_resolution": 8
+  },
+  "created_at": "2026-01-25T00:00:00Z"
+}
+```
+
+#### 7. 방 목록 조회
+**GET** `/api/rooms/`
+
+**언제 쓰이는가**: 
+- 메인 화면에서 참가 가능한 방 목록을 볼 때
+- 방 검색 화면에서 사용
+- 참가하고 싶은 방을 찾을 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 쿼리 파라미터: `status`(ready/active/finished), `q`(방 이름 검색), `page`, `page_size`
+- 기본적으로 `ready` 상태인 방만 표시 (선택적으로 `active` 상태도 포함 가능)
+
+```json
+Response:
+{
+  "count": 10,
+  "results": [
+    {
+      "id": "uuid",
+      "name": "한강 러닝 대결",
+      "total_participants": 4,
+      "current_participants": 2,
+      "status": "ready",
+      "start_date": "2026-02-01",
+      "end_date": "2026-02-28"
+    }
+  ]
+}
+```
+
+#### 8. 방 상세 조회
+**GET** `/api/rooms/{id}/`
+
+**언제 쓰이는가**: 
+- 방 목록에서 특정 방을 클릭했을 때
+- 방 내부 화면 진입 시
+- 게임 진행 중 현재 방 정보를 확인할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 방이 존재해야 함
+- 방 참가자이거나 공개 방이면 조회 가능
+
+```json
+Response:
+{
+  "id": "uuid",
+  "name": "한강 러닝 대결",
+  "creator": {"id": "uuid", "username": "runner1"},
+  "total_participants": 4,
+  "current_participants": 2,
+  "team_a_count": 1,
+  "team_b_count": 1,
+  "start_date": "2026-02-01",
+  "end_date": "2026-02-28",
+  "status": "ready",
+  "invite_code": "ABC123",
+  "game_area": {
+    "id": "uuid",
+    "name": "한강공원",
+    "city": "서울",
+    "bounds": {...},
+    "h3_resolution": 8
+  },
+  "current_hex_ownerships": {},
+  "participants": [
+    {
+      "id": "uuid",
+      "user": {"id": "uuid", "username": "runner1"},
+      "team": "A",
+      "is_host": true,
+      "paintball_count": 0,
+      "super_paintball_count": 0
+    },
+    {
+      "id": "uuid",
+      "user": {"id": "uuid", "username": "runner2"},
+      "team": "B",
+      "is_host": false,
+      "paintball_count": 0,
+      "super_paintball_count": 0
+    }
+  ]
+}
+```
+
+#### 8-1. 내가 현재 참가 중인 방 조회
+**GET** `/api/rooms/my/`
+
+**언제 쓰이는가**: 
+- 앱 시작 시 현재 참가 중인 방이 있는지 확인할 때
+- 메인 화면에서 "내 방" 버튼 클릭 시
+- 게임 화면으로 바로 이동하기 전 현재 방 확인
+- 앱을 다시 열었을 때 이전에 참가했던 방 확인
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 현재 사용자가 참가 중인 방만 반환
+- 여러 방에 참가 중인 경우, 우선순위: `active` > `ready` > `finished`
+- 참가 중인 방이 없으면 `null` 반환
+
+```json
+Response (참가 중인 방이 있는 경우):
+{
+  "id": "uuid",
+  "name": "한강 러닝 대결",
+  "creator": {"id": "uuid", "username": "runner1"},
+  "total_participants": 4,
+  "current_participants": 2,
+  "team_a_count": 1,
+  "team_b_count": 1,
+  "start_date": "2026-02-01",
+  "end_date": "2026-02-28",
+  "status": "ready",
+  "invite_code": "ABC123",
+  "game_area": {
+    "id": "uuid",
+    "name": "한강공원",
+    "city": "서울",
+    "bounds": {...},
+    "h3_resolution": 8
+  },
+  "current_hex_ownerships": {},
+  "participants": [...],
+  "my_participant": {
+    "id": "uuid",
+    "user": {"id": "uuid", "username": "runner2"},
+    "team": "B",
+    "is_host": false,
+    "is_recording": false,
+    "paintball_count": 5,
+    "super_paintball_count": 1,
+    "paintball_gauge": 60,
+    "consecutive_attendance_days": 2,
+    "joined_at": "2026-01-25T00:00:00Z"
+  },
+  "created_at": "2026-01-25T00:00:00Z"
+}
+
+Response (참가 중인 방이 없는 경우):
+null
+```
+
+#### 9. 방 참가 (초대 코드)
+**POST** `/api/rooms/join/`
+
+**언제 쓰이는가**: 
+- 초대 코드를 입력하여 방에 참가할 때
+- 친구로부터 초대 코드를 받았을 때
+- 방 목록에서 방을 선택하고 참가 버튼을 눌렀을 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- `invite_code`가 유효해야 함
+- 방의 상태가 `ready`여야 함 (`active`나 `finished` 상태에서는 참가 불가)
+- 해당 팀의 정원이 남아있어야 함 (팀별 정원 = `total_participants / 2`)
+- 이미 해당 방에 참가 중이면 중복 참가 불가
+- `team`을 지정하지 않으면 자동으로 빈 팀에 배정됨
+
+```json
+Request:
+{
+  "invite_code": "ABC123",
+  "team": "B"  // 선택사항, 없으면 빈 팀으로 자동 배정
+}
+
+Response:
+{
+  "message": "방에 참가했습니다.",
+  "room": {...},
+  "participant": {
+    "id": "uuid",
+    "team": "B",
+    "is_host": false
+  }
+}
+```
+
+#### 10. 방 나가기
+**POST** `/api/rooms/{id}/leave/`
+
+**언제 쓰이는가**: 
+- 방 준비 화면에서 "나가기" 버튼 클릭 시
+- 게임 시작 전에 방을 떠나고 싶을 때
+- 다른 방으로 이동하고 싶을 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 해당 방의 참가자여야 함
+- 방의 상태가 `ready`여야 함 (`active` 상태에서는 나가기 불가)
+- 방장이 나가면 남은 참가자 중 가장 먼저 들어온 사람에게 방장 권한 자동 위임
+- 마지막 참가자가 나가면 방이 자동으로 삭제됨
+
+```json
+Response:
+{
+  "message": "방에서 나갔습니다."
+}
+```
+
+#### 11. 팀 변경
+**POST** `/api/rooms/{id}/change-team/`
+
+**언제 쓰이는가**: 
+- 방 준비 화면에서 팀을 바꾸고 싶을 때
+- 친구와 같은 팀에 있고 싶을 때
+- 팀 밸런스를 맞추고 싶을 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 해당 방의 참가자여야 함
+- 방의 상태가 `ready`여야 함 (`active` 상태에서는 변경 불가)
+- 변경하려는 팀(`team`)의 정원이 남아있어야 함
+- 현재 팀과 다른 팀으로만 변경 가능
+
+```json
+Request:
+{
+  "team": "B"
+}
+
+Response:
+{
+  "message": "팀을 변경했습니다.",
+  "participant": {
+    "id": "uuid",
+    "team": "B"
+  }
+}
+```
+
+#### 12. 방 시작 (방장 전용)
+**POST** `/api/rooms/{id}/start/`
+
+**언제 쓰이는가**: 
+- 방장이 모든 인원이 찬 것을 확인하고 게임을 시작할 때
+- 방 준비 화면에서 "시작" 버튼 클릭 시
+- 예약된 시작 시간이 되었을 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 방장(`is_host=true`)만 호출 가능
+- 방의 상태가 `ready`여야 함
+- `current_participants == total_participants` (모든 인원이 찼을 때만 가능)
+- 현재 날짜가 `start_date`와 같거나 이후여야 함
+- 성공 시 방 상태가 `active`로 변경됨
+
+```json
+Response:
+{
+  "message": "게임이 시작되었습니다.",
+  "room": {
+    "id": "uuid",
+    "status": "active",
+    "start_date": "2026-02-01"
+  }
+}
+```
+
+#### 13. 친구 초대 (방 내에서)
+**POST** `/api/rooms/{id}/invite/`
+
+**언제 쓰이는가**: 
+- 방 내에서 친구 목록을 보고 특정 친구를 초대할 때
+- 방 참가 화면에서 "친구 초대" 버튼 클릭 시
+- 팀원이 부족할 때 친구를 불러오고 싶을 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 해당 방의 참가자여야 함
+- `user_id`로 지정한 사용자가 친구여야 함 (친구 관계 확인)
+- 초대받는 사람이 이미 해당 방에 참가 중이면 중복 초대 불가
+- 상대방의 우편함에 `room_invite` 타입 메일이 생성됨
+- 받는 사람이 수락하면 자동으로 방에 참가됨
+
+```json
+Request:
+{
+  "user_id": "uuid"  // 또는 username으로 검색
+}
+
+Response:
+{
+  "message": "초대를 보냈습니다."
+}
+```
+
+#### 13-1. 출석 현황 조회
+**GET** `/api/rooms/{id}/attendance/`
+
+**언제 쓰이는가**: 
+- 게임 화면에서 출석 현황을 확인할 때
+- 연속 출석 보상 정보를 확인할 때
+- 오늘 출석 여부를 확인할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 해당 방의 참가자여야 함
+
+**출석 체크 기준**:
+- 기록 중(`is_recording=true`)일 때 다른 헥사곤으로 이동하면 출석 체크됨
+- 하루에 한 번만 출석 체크됨
+
+**연속 출석 보상**:
+- 연속 2일: +2 페인트볼
+- 연속 3일: +3 페인트볼
+- 연속 4일: +4 페인트볼
+- ... (계속 증가, 최대 +7 페인트볼)
+- 연속 출석은 **방별로** 관리되며, 방이 끝나면 초기화됨
+
+```json
+Response:
+{
+  "consecutive_days": 3,
+  "last_attendance_date": "2026-01-25",
+  "attended_today": false,
+  "current_paintball_count": 5,
+  "next_reward": 4,
+  "max_reward": 7,
+  "reward_info": {
+    "description": "연속 출석 보상",
+    "rewards": [
+      {"days": 2, "paintballs": 2},
+      {"days": 3, "paintballs": 3},
+      {"days": 4, "paintballs": 4},
+      {"days": 5, "paintballs": 5},
+      {"days": 6, "paintballs": 6},
+      {"days": 7, "paintballs": 7, "note": "최대"}
+    ],
+    "how_to_attend": "기록 중일 때 다른 헥사곤으로 이동하면 출석 체크됩니다."
+  }
+}
+```
+
+---
+
+### 기록 API
+
+#### 14. 기록 시작
+**POST** `/api/records/start/`
+
+**언제 쓰이는가**: 
+- 게임 화면에서 "시작" 버튼을 눌러 러닝을 시작할 때
+- GPS 추적을 시작하고 땅따먹기를 시작하고 싶을 때
+- 방이 `active` 상태가 되고 실제로 달리기를 시작할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- `room_id`가 제공되면 해당 방의 참가자여야 함
+- 방이 `active` 상태여야 땅따먹기가 가능함 (하지만 방 밖에서도 기록은 가능)
+- 이미 기록 중(`is_recording=true`)이면 중복 시작 불가
+- 성공 시 `participant.is_recording = true`로 변경됨
+- `RunningRecord` 레코드가 생성되고 `started_at`이 기록됨
+
+```json
+Request:
+{
+  "room_id": "uuid"  // 선택사항
+}
+
+Response:
+{
+  "id": "uuid",
+  "started_at": "2026-01-25T10:00:00Z",
+  "room_id": "uuid"
+}
+```
+
+#### 15. 기록 종료
+**POST** `/api/records/{id}/stop/`
+
+**언제 쓰이는가**: 
+- 게임 화면에서 "정지" 버튼을 눌러 러닝을 종료할 때
+- 달리기를 마치고 기록을 저장하고 싶을 때
+- 일시정지 후 다시 시작하기 전에 현재 기록을 저장할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 해당 기록(`record_id`)의 소유자여야 함
+- 현재 기록 중(`is_recording=true`)이어야 함
+- 성공 시 `participant.is_recording = false`로 변경됨
+- `avg_pace_seconds_per_km`가 자동 계산되어 저장됨
+
+**⚠️ 중요: 거리/시간은 백엔드에서 계산**:
+- `duration_seconds`: 백엔드에서 `started_at` ~ `ended_at` 차이로 계산
+- `distance_meters`: 백엔드에서 WebSocket GPS 데이터로 누적 계산 (Haversine 공식)
+- 비정상적인 속도(시속 50km 이상)는 거리 계산에서 제외
+- 프론트엔드는 Request body 없이 호출 가능 (모든 값은 백엔드에서 계산)
+
+```json
+Request:
+{}  // body 없이 호출 가능
+
+Response:
+{
+  "id": "uuid",
+  "duration_seconds": 1802,           // 백엔드 계산값
+  "distance_meters": 4987.5,          // 백엔드 계산값
+  "avg_pace_seconds_per_km": 361.2,
+  "started_at": "2026-01-25T10:00:00Z",
+  "ended_at": "2026-01-25T10:30:02Z"
+}
+```
+
+#### 16. 내 기록 목록
+**GET** `/api/records/`
+
+**언제 쓰이는가**: 
+- 기록 화면에서 내가 달린 모든 기록을 조회할 때
+- 통계 화면에서 특정 기간의 기록을 필터링할 때
+- 과거 기록을 확인하고 싶을 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 자신의 기록만 조회 가능
+- 쿼리 파라미터: `year`, `month`, `week` (기간 필터링)
+- 페이징 지원 (`page`, `page_size`)
+- 기본적으로 최신순으로 정렬
+
+```json
+Query Parameters:
+- year: 년도 필터
+- month: 월 필터
+- week: 주 필터
+
+Response:
+{
+  "count": 10,
+  "results": [
+    {
+      "id": "uuid",
+      "duration_seconds": 1800,
+      "distance_meters": 5000,
+      "avg_pace_seconds_per_km": 360,
+      "started_at": "2026-01-25T10:00:00Z",
+      "ended_at": "2026-01-25T10:30:00Z"
+    }
+  ]
+}
+```
+
+#### 17. 기록 통계
+**GET** `/api/records/stats/`
+
+**언제 쓰이는가**: 
+- 대시보드 화면에서 통계를 표시할 때
+- 특정 기간의 누적 거리, 시간, 평균 페이스를 확인할 때
+- 목표 달성 여부를 확인할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 자신의 통계만 조회 가능
+- 쿼리 파라미터: `period` (year | month | week)
+- `period`가 없으면 전체 기간 통계 반환
+
+```json
+Query Parameters:
+- period: year | month | week
+
+Response:
+{
+  "period": "month",
+  "total_distance_meters": 50000,
+  "total_duration_seconds": 18000,
+  "total_runs": 10,
+  "avg_pace_seconds_per_km": 360
+}
+```
+
+---
+
+### 친구 API
+
+#### 18. 친구 목록
+**GET** `/api/friends/`
+
+**언제 쓰이는가**: 
+- 친구 화면에서 내 친구 목록을 볼 때
+- 방 초대 시 친구를 선택할 때
+- 친구와 함께 게임하고 싶을 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- `status='accepted'`인 친구 관계만 반환
+- 페이징 지원
+
+```json
+Response:
+{
+  "count": 5,
+  "results": [
+    {
+      "id": "uuid",
+      "username": "friend1",
+      "email": "friend1@example.com"
+    }
+  ]
+}
+```
+
+#### 19. 친구 검색 (닉네임)
+**GET** `/api/friends/search/?q={username}`
+
+**언제 쓰이는가**: 
+- 친구 추가 화면에서 특정 사용자를 검색할 때
+- 닉네임을 알고 있을 때 친구 요청을 보내기 위해 검색할 때
+- 방 초대 시 친구가 아닌 사용자를 검색할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 쿼리 파라미터 `q`는 최소 2자 이상이어야 함
+- 자신은 검색 결과에서 제외됨
+- 이미 친구인 사용자도 검색 가능 (중복 요청 방지 필요)
+
+```json
+Response:
+{
+  "results": [
+    {
+      "id": "uuid",
+      "username": "runner2"
+    }
+  ]
+}
+```
+
+#### 20. 친구 요청
+**POST** `/api/friends/request/`
+
+**언제 쓰이는가**: 
+- 친구 검색 결과에서 "친구 추가" 버튼 클릭 시
+- 프로필 화면에서 친구 요청을 보낼 때
+- 다른 사용자와 친구가 되고 싶을 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- `user_id`가 유효한 사용자여야 함
+- 자신에게는 친구 요청 불가
+- 이미 친구 관계(`status='accepted'`)이면 중복 요청 불가
+- 이미 대기 중인 요청(`status='pending'`)이 있으면 중복 요청 불가
+- 상대방의 우편함에 `friend_request` 타입 메일이 생성됨
+- `Friendship` 레코드가 `status='pending'`으로 생성됨
+
+```json
+Request:
+{
+  "user_id": "uuid"
+}
+
+Response:
+{
+  "message": "친구 요청을 보냈습니다."
+}
+```
+
+---
+
+### 우편함 API
+
+> **참고**: 친구 요청 수락/거절은 **우편함 API (21번)**로 통합되었습니다.
+> 모든 수락/거절 작업은 `POST /api/mailbox/{id}/respond/`를 사용하세요.
+
+#### 20-1. 우편함 목록
+**GET** `/api/mailbox/`
+
+**언제 쓰이는가**: 
+- 우편함 화면 진입 시
+- 새로운 알림(친구 요청, 방 초대)을 확인할 때
+- 읽지 않은 메일을 확인할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 자신이 받은 메일만 조회 가능
+- 기본적으로 최신순으로 정렬
+- 쿼리 파라미터: `status`(unread/read/accepted/rejected), `mail_type`(friend_request/room_invite)
+- 페이징 지원
+
+```json
+Response:
+{
+  "count": 3,
+  "results": [
+    {
+      "id": "uuid",
+      "sender": {"id": "uuid", "username": "friend1"},
+      "mail_type": "room_invite",  // friend_request | room_invite
+      "room": {"id": "uuid", "name": "한강 러닝 대결"},
+      "status": "unread",
+      "created_at": "2026-01-25T00:00:00Z"
+    }
+  ]
+}
+```
+
+#### 21. 우편 수락/거절 (친구 요청 및 방 초대 통합)
+**POST** `/api/mailbox/{id}/respond/`
+
+**언제 쓰이는가**: 
+- 우편함에서 **친구 요청**을 확인하고 수락/거절할 때
+- 우편함에서 **방 초대**를 확인하고 수락/거절할 때
+- 알림을 받고 즉시 응답할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 해당 메일의 수신자(`receiver`)여야 함
+- 메일이 존재하고 `status`가 `unread` 또는 `read`여야 함 (이미 처리된 메일은 불가)
+
+**친구 요청(`mail_type='friend_request'`)의 경우**:
+- `accept=true`:
+  - `Friendship.status='accepted'`로 변경
+  - `Mailbox.status='accepted'`로 변경
+- `accept=false`:
+  - `Friendship` 레코드 삭제
+  - `Mailbox.status='rejected'`로 변경
+
+**방 초대(`mail_type='room_invite'`)의 경우**:
+- `accept=true`:
+  - 방의 상태가 `ready`여야 함
+  - 방 정원이 남아있어야 함
+  - 이미 해당 방에 참가 중이면 중복 참가 불가
+  - **팀은 자동 배정** (인원이 적은 팀으로 배정)
+  - `Mailbox.status='accepted'`로 변경
+- `accept=false`:
+  - `Mailbox.status='rejected'`로 변경
+
+```json
+Request:
+{
+  "accept": true
+}
+
+Response (친구 요청 수락):
+{
+  "message": "친구 요청을 수락했습니다."
+}
+
+Response (방 초대 수락):
+{
+  "message": "초대를 수락했습니다. A팀에 배정되었습니다.",
+  "room": {
+    "id": "uuid",
+    "name": "한강 러닝 대결",
+    ...
+  },
+  "participant": {
+    "id": "uuid",
+    "team": "A",
+    "is_host": false,
+    ...
+  }
+}
+
+Response (거절):
+{
+  "message": "친구 요청을 거절했습니다."
+}
+// 또는
+{
+  "message": "초대를 거절했습니다."
+}
+```
+
+---
+
+## WebSocket API
+
+### 연결
+```
+ws://{host}/ws/room/{room_id}/?token={jwt_token}
+```
+
+### 공통 메시지 형식
+```json
+{
+  "type": "event_type",
+  "data": {...}
+}
+```
+
+---
+
+### 클라이언트 → 서버
+
+#### 1. 위치 업데이트
+**언제 쓰이는가**: 
+- GPS가 업데이트될 때마다 주기적으로 전송 (예: 1-5초마다)
+- 사용자가 이동할 때 실시간 위치를 서버에 전송
+- 땅따먹기 게임에서 영역 점령을 위해 위치 추적이 필요할 때
+
+**제약 조건**:
+- WebSocket 연결이 활성화되어 있어야 함
+- 해당 방의 참가자여야 함
+- `is_recording=true`일 때만 땅따먹기 처리됨 (기록 중이 아니면 위치만 업데이트)
+- 방의 상태가 `active`일 때만 땅 점령이 가능함
+- `lat`, `lng`는 유효한 좌표 범위 내여야 함 (-90~90, -180~180)
+- 비정상적으로 빠른 속도로 이동한 경우 무시될 수 있음
+
+```json
+{
+  "type": "location_update",
+  "lat": 37.5665,
+  "lng": 126.9780
+}
+```
+
+#### 2. 페인트볼 사용
+**언제 쓰이는가**: 
+- 게임 화면에서 지도의 특정 hex를 선택하고 페인트볼 사용 버튼 클릭 시
+- 인접한 영역을 원격으로 점령하고 싶을 때
+- 게이지가 차서 페인트볼을 획득했을 때 사용하고 싶을 때
+
+**제약 조건**:
+- WebSocket 연결이 활성화되어 있어야 함
+- 해당 방의 참가자여야 함
+- 방의 상태가 `active`여야 함
+- `paintball_type='normal'`인 경우: `paintball_count >= 1` 필요, k-ring(1) 범위 내의 hex만 가능
+- `paintball_type='super'`인 경우: `super_paintball_count >= 1` 필요, k-ring(2) 범위 내의 hex만 가능
+- `target_h3_id`가 유효한 H3 ID여야 함
+- 현재 위치(`last_h3_id`)로부터 범위 내에 있어야 함
+- 페인트볼 사용 시 해당 개수가 차감됨
+
+```json
+{
+  "type": "paintball",
+  "target_h3_id": "8830e1c659fffff",
+  "paintball_type": "normal"  // normal | super
+}
+```
+
+#### 3. 페인트볼 교환
+**언제 쓰이는가**: 
+- 게임 화면에서 "교환" 버튼 클릭 시
+- 일반 페인트볼이 많을 때 슈퍼 페인트볼로 교환하고 싶을 때
+- 더 먼 거리의 hex를 점령하기 위해 슈퍼 페인트볼이 필요할 때
+
+**제약 조건**:
+- WebSocket 연결이 활성화되어 있어야 함
+- 해당 방의 참가자여야 함
+- `paintball_count >= 3`이어야 함
+- 교환 성공 시 `paintball_count -= 3`, `super_paintball_count += 1`
+
+```json
+{
+  "type": "exchange_paintball"
+}
+```
+
+#### 3-1. 기록 시작 (WebSocket)
+**언제 쓰이는가**: 
+- 게임 화면에서 "시작" 버튼을 눌러 러닝을 시작할 때
+- REST API 대신 WebSocket으로 기록을 시작할 때
+
+**제약 조건**:
+- WebSocket 연결이 활성화되어 있어야 함
+- 해당 방의 참가자여야 함
+- 이미 기록 중이면 에러 반환
+- 기록 시작 시 거리/시간 계산 변수가 초기화됨
+
+```json
+{
+  "type": "start_recording"
+}
+```
+
+#### 3-2. 기록 종료 (WebSocket)
+**언제 쓰이는가**: 
+- 게임 화면에서 "정지" 버튼을 눌러 러닝을 종료할 때
+- REST API 대신 WebSocket으로 기록을 종료할 때
+
+**제약 조건**:
+- WebSocket 연결이 활성화되어 있어야 함
+- 해당 방의 참가자여야 함
+- 현재 기록 중(`is_recording=true`)이어야 함
+- **거리/시간은 백엔드에서 계산** (GPS 위치 데이터 기반)
+- Request body는 선택사항 (모든 값은 백엔드에서 계산)
+
+```json
+{
+  "type": "stop_recording"
+}
+```
+
+---
+
+### 서버 → 클라이언트
+
+#### 4. Hex 점령 알림
+```json
+{
+  "type": "hex_claimed",
+  "h3_id": "8830e1c659fffff",
+  "team": "A",
+  "user_id": "uuid",
+  "claimed_at": "2026-01-25T10:00:00Z"
+}
+```
+
+#### 5. 참가자 위치 업데이트
+```json
+{
+  "type": "participant_location",
+  "user_id": "uuid",
+  "team": "A",
+  "lat": 37.5665,
+  "lng": 126.9780,
+  "h3_id": "8830e1c659fffff"
+}
+```
+
+#### 6. 게이지/페인트볼 업데이트
+```json
+{
+  "type": "gauge_update",
+  "paintball_gauge": 60,
+  "paintball_count": 2,
+  "super_paintball_count": 0
+}
+```
+
+#### 7. 참가자 입장/퇴장
+```json
+{
+  "type": "participant_joined",
+  "user_id": "uuid",
+  "username": "runner2",
+  "team": "B"
+}
+
+{
+  "type": "participant_left",
+  "user_id": "uuid"
+}
+```
+
+#### 8. 팀 변경 알림
+```json
+{
+  "type": "team_changed",
+  "user_id": "uuid",
+  "old_team": "A",
+  "new_team": "B"
+}
+```
+
+#### 9. 게임 시작 알림
+```json
+{
+  "type": "game_started",
+  "room_id": "uuid",
+  "status": "active"
+}
+```
+
+#### 10. 게임 종료 알림
+```json
+{
+  "type": "game_ended",
+  "room_id": "uuid",
+  "winner_team": "A",
+  "mvp_user_id": "uuid",
+  "team_a_hexes": 150,
+  "team_b_hexes": 120
+}
+```
+
+#### 11. 기록 시작/종료 알림
+```json
+// 기록 시작
+{
+  "type": "recording_started",
+  "record_id": "uuid",
+  "started_at": "2026-01-25T10:00:00Z"
+}
+
+// 기록 종료 (백엔드에서 거리/시간 계산)
+{
+  "type": "recording_stopped",
+  "record_id": "uuid",
+  "duration_seconds": 1802,           // 백엔드 계산값
+  "distance_meters": 4987.5,          // 백엔드 계산값 (Haversine 공식)
+  "avg_pace_seconds_per_km": 361.2
+}
+```
+
+#### 12. 출석 보상 알림
+```json
+{
+  "type": "attendance_reward",
+  "consecutive_days": 3,
+  "paintballs_earned": 3
+}
+```
+
+#### 13. 루프 완성 알림
+```json
+{
+  "type": "loop_completed",
+  "team": "A",
+  "user_id": "uuid",
+  "hexes_filled": ["8830e1c659fffff", "8830e1c65bfffff", ...]
+}
+```
+
+---
+
+## 에러 응답
+
+### 공통 에러 형식
+```json
+{
+  "error": "error_code",
+  "message": "에러 메시지",
+  "detail": {...}  // 선택사항
+}
+```
+
+### 에러 코드
+| 코드 | 설명 |
+|------|------|
+| `AUTH_REQUIRED` | 인증 필요 |
+| `PERMISSION_DENIED` | 권한 없음 |
+| `NOT_FOUND` | 리소스 없음 |
+| `ROOM_FULL` | 방 정원 초과 |
+| `TEAM_FULL` | 팀 정원 초과 |
+| `ROOM_NOT_READY` | 방이 준비 상태가 아님 |
+| `ROOM_NOT_ACTIVE` | 방이 진행 중이 아님 |
+| `NOT_RECORDING` | 기록 중이 아님 |
+| `INSUFFICIENT_PAINTBALLS` | 페인트볼 부족 |
+| `INVALID_HEX` | 유효하지 않은 hex |
+| `HEX_OUT_OF_RANGE` | hex가 범위 밖 |
+| `SPEED_TOO_FAST` | 속도 초과 (부정 방지) |
