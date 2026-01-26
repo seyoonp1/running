@@ -198,36 +198,6 @@ def send_friend_request(request):
     return Response({'message': '친구 요청을 보냈습니다.'}, status=status.HTTP_201_CREATED)
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def respond_friend_request(request, friendship_id):
-    """
-    21. 친구 요청 수락/거절
-    POST /api/friends/{friendship_id}/respond/
-    """
-    accept = request.data.get('accept', False)
-    
-    try:
-        friendship = Friendship.objects.get(
-            id=friendship_id,
-            addressee=request.user,
-            status='pending'
-        )
-    except Friendship.DoesNotExist:
-        return Response({'error': 'NOT_FOUND', 'message': '친구 요청을 찾을 수 없습니다.'}, 
-                       status=status.HTTP_404_NOT_FOUND)
-    
-    if accept:
-        friendship.status = 'accepted'
-        friendship.save(update_fields=['status'])
-        message = '친구 요청을 수락했습니다.'
-    else:
-        friendship.delete()
-        message = '친구 요청을 거절했습니다.'
-    
-    return Response({'message': message})
-
-
 # ==================== 우편함 API ====================
 
 @api_view(['GET'])
@@ -270,11 +240,14 @@ def mailbox_list(request):
 @permission_classes([IsAuthenticated])
 def mailbox_respond(request, id):
     """
-    23. 초대 수락/거절
+    21. 우편 수락/거절 (친구 요청 및 방 초대 통합)
     POST /api/mailbox/{id}/respond/
+    
+    - 친구 요청과 방 초대 모두 이 API로 처리
+    - accept=true 시 수락, accept=false 시 거절
+    - 방 초대 수락 시 팀은 자동 배정 (인원이 적은 팀으로)
     """
     accept = request.data.get('accept', False)
-    team = request.data.get('team')  # 방 초대 수락 시 선택사항
     
     try:
         mail = Mailbox.objects.get(id=id, receiver=request.user)
@@ -290,8 +263,13 @@ def mailbox_respond(request, id):
         if mail.mail_type == 'friend_request':
             # 친구 요청 수락
             if mail.friendship:
-                mail.friendship.status = 'accepted'
-                mail.friendship.save(update_fields=['status'])
+                if mail.friendship.status == 'pending':
+                    mail.friendship.status = 'accepted'
+                    mail.friendship.save(update_fields=['status'])
+                elif mail.friendship.status == 'accepted':
+                    mail.status = 'accepted'
+                    mail.save(update_fields=['status'])
+                    return Response({'message': '이미 친구입니다.'})
             mail.status = 'accepted'
             mail.save(update_fields=['status'])
             return Response({'message': '친구 요청을 수락했습니다.'})
@@ -299,6 +277,8 @@ def mailbox_respond(request, id):
         elif mail.mail_type == 'room_invite':
             # 방 초대 수락
             if not mail.room:
+                mail.status = 'rejected'
+                mail.save(update_fields=['status'])
                 return Response({'error': 'ROOM_NOT_FOUND', 'message': '방을 찾을 수 없습니다.'}, 
                                status=status.HTTP_400_BAD_REQUEST)
             
@@ -321,34 +301,21 @@ def mailbox_respond(request, id):
                 mail.save(update_fields=['status'])
                 return Response({'message': '이미 참가 중입니다.'})
             
-            # 팀 결정
+            # 팀 자동 배정 (인원이 적은 팀으로)
             team_a_count = room.team_a_count
             team_b_count = room.team_b_count
             max_per_team = room.total_participants // 2
             
-            if team:
-                team = team.upper()
-                if team not in ['A', 'B']:
-                    return Response({'error': 'INVALID_INPUT', 'message': '팀은 A 또는 B여야 합니다.'}, 
-                                   status=status.HTTP_400_BAD_REQUEST)
-                if team == 'A' and team_a_count >= max_per_team:
-                    return Response({'error': 'TEAM_FULL', 'message': 'A팀 정원이 초과되었습니다.'}, 
-                                   status=status.HTTP_403_FORBIDDEN)
-                if team == 'B' and team_b_count >= max_per_team:
-                    return Response({'error': 'TEAM_FULL', 'message': 'B팀 정원이 초과되었습니다.'}, 
-                                   status=status.HTTP_403_FORBIDDEN)
+            if team_a_count <= team_b_count and team_a_count < max_per_team:
+                team = 'A'
+            elif team_b_count < max_per_team:
+                team = 'B'
             else:
-                # 자동 배정
-                if team_a_count <= team_b_count and team_a_count < max_per_team:
-                    team = 'A'
-                elif team_b_count < max_per_team:
-                    team = 'B'
-                else:
-                    return Response({'error': 'ROOM_FULL', 'message': '방 정원이 초과되었습니다.'}, 
-                                   status=status.HTTP_403_FORBIDDEN)
+                return Response({'error': 'ROOM_FULL', 'message': '방 정원이 초과되었습니다.'}, 
+                               status=status.HTTP_403_FORBIDDEN)
             
             # 참가자 생성
-            Participant.objects.create(
+            participant = Participant.objects.create(
                 room=room,
                 user=request.user,
                 team=team,
@@ -358,13 +325,22 @@ def mailbox_respond(request, id):
             mail.status = 'accepted'
             mail.save(update_fields=['status'])
             
-            from apps.rooms.serializers import RoomDetailSerializer
+            from apps.rooms.serializers import RoomDetailSerializer, ParticipantSerializer
             return Response({
-                'message': '초대를 수락했습니다.',
-                'room': RoomDetailSerializer(room).data
+                'message': f'초대를 수락했습니다. {team}팀에 배정되었습니다.',
+                'room': RoomDetailSerializer(room).data,
+                'participant': ParticipantSerializer(participant).data
             })
     else:
         # 거절
+        if mail.mail_type == 'friend_request' and mail.friendship:
+            # 친구 요청 거절 시 Friendship 레코드도 삭제
+            mail.friendship.delete()
+        
         mail.status = 'rejected'
         mail.save(update_fields=['status'])
-        return Response({'message': '초대를 거절했습니다.'})
+        
+        if mail.mail_type == 'friend_request':
+            return Response({'message': '친구 요청을 거절했습니다.'})
+        else:
+            return Response({'message': '초대를 거절했습니다.'})

@@ -111,6 +111,48 @@ class RoomDetailView(generics.RetrieveAPIView):
     lookup_field = 'id'
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_current_room(request):
+    """
+    내가 현재 참가 중인 방 조회
+    GET /api/rooms/my/
+    """
+    # 현재 사용자가 참가 중인 방 찾기
+    # active > ready > finished 순으로 우선순위
+    from django.db.models import Case, When, IntegerField
+    
+    participants = Participant.objects.filter(
+        user=request.user
+    ).select_related('room', 'room__game_area').annotate(
+        status_priority=Case(
+            When(room__status='active', then=1),
+            When(room__status='ready', then=2),
+            When(room__status='finished', then=3),
+            default=4,
+            output_field=IntegerField()
+        )
+    ).order_by(
+        'status_priority',  # 1(active) > 2(ready) > 3(finished)
+        '-room__created_at'  # 같은 상태면 최신순
+    )
+    
+    participant = participants.first()
+    
+    if not participant:
+        return Response(None, status=status.HTTP_200_OK)
+    
+    # 방 상세 정보
+    room = participant.room
+    serializer = RoomDetailSerializer(room, context={'request': request})
+    
+    # 내 참가자 정보 추가
+    data = serializer.data
+    data['my_participant'] = ParticipantSerializer(participant).data
+    
+    return Response(data, status=status.HTTP_200_OK)
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def join_room(request):
@@ -387,6 +429,56 @@ def invite_to_room(request, id):
     )
     
     return Response({'message': '초대를 보냈습니다.'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_status(request, id):
+    """
+    출석 현황 조회
+    GET /api/rooms/{id}/attendance/
+    """
+    try:
+        room = Room.objects.get(id=id)
+    except Room.DoesNotExist:
+        return Response({'error': 'NOT_FOUND', 'message': '방을 찾을 수 없습니다.'}, 
+                       status=status.HTTP_404_NOT_FOUND)
+    
+    # 참가자 확인
+    try:
+        participant = Participant.objects.get(room=room, user=request.user)
+    except Participant.DoesNotExist:
+        return Response({'error': 'NOT_MEMBER', 'message': '방의 멤버가 아닙니다.'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    # 다음 출석 보상 계산
+    current_streak = participant.consecutive_attendance_days
+    next_reward = min(current_streak + 1, 7) if current_streak >= 1 else 2
+    
+    # 오늘 출석 여부
+    today = timezone.now().date()
+    attended_today = participant.last_attendance_date == today
+    
+    return Response({
+        'consecutive_days': current_streak,
+        'last_attendance_date': participant.last_attendance_date,
+        'attended_today': attended_today,
+        'current_paintball_count': participant.paintball_count,
+        'next_reward': next_reward if current_streak >= 1 else 2,
+        'max_reward': 7,
+        'reward_info': {
+            'description': '연속 출석 보상',
+            'rewards': [
+                {'days': 2, 'paintballs': 2},
+                {'days': 3, 'paintballs': 3},
+                {'days': 4, 'paintballs': 4},
+                {'days': 5, 'paintballs': 5},
+                {'days': 6, 'paintballs': 6},
+                {'days': 7, 'paintballs': 7, 'note': '최대'},
+            ],
+            'how_to_attend': '기록 중일 때 다른 헥사곤으로 이동하면 출석 체크됩니다.'
+        }
+    })
 
 
 # ==================== 러닝 기록 API ====================

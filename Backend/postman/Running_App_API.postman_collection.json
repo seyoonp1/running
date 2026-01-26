@@ -280,6 +280,49 @@
 					"response": []
 				},
 				{
+					"name": "내가 현재 참가 중인 방 조회",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const jsonData = pm.response.json();",
+									"    if (jsonData) {",
+									"        pm.environment.set(\"room_id\", jsonData.id);",
+									"        pm.test(\"현재 참가 중인 방 조회 성공\", function () {",
+									"            pm.response.to.have.status(200);",
+									"            pm.expect(jsonData).to.have.property('id');",
+									"            pm.expect(jsonData).to.have.property('my_participant');",
+									"        });",
+									"    } else {",
+									"        pm.test(\"참가 중인 방 없음\", function () {",
+									"            pm.response.to.have.status(200);",
+									"        });",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/rooms/my/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "rooms", "my", ""]
+						}
+					},
+					"response": []
+				},
+				{
 					"name": "방 참가 (초대 코드)",
 					"request": {
 						"method": "POST",
@@ -390,6 +433,42 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "rooms", "{{room_id}}", "invite", ""]
 						}
+					},
+					"response": []
+				},
+				{
+					"name": "출석 현황 조회",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"출석 현황 조회 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('consecutive_days');",
+									"    pm.expect(jsonData).to.have.property('attended_today');",
+									"    pm.expect(jsonData).to.have.property('reward_info');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/rooms/{{room_id}}/attendance/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "rooms", "{{room_id}}", "attendance", ""]
+						},
+						"description": "출석 현황 조회\\n- consecutive_days: 연속 출석일\\n- attended_today: 오늘 출석 여부\\n- next_reward: 다음 보상 페인트볼 수\\n\\n출석 기준: 기록 중일 때 다른 헥사곤으로 이동\\n연속 출석 보상: 2일(+2), 3일(+3), ... 최대 7개"
 					},
 					"response": []
 				}
@@ -604,32 +683,6 @@
 						}
 					},
 					"response": []
-				},
-				{
-					"name": "친구 요청 수락/거절",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"accept\": true\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/friends/{{friendship_id}}/respond/",
-							"host": ["{{base_url}}"],
-							"path": ["api", "friends", "{{friendship_id}}", "respond", ""]
-						}
-					},
-					"response": []
 				}
 			]
 		},
@@ -671,7 +724,27 @@
 					"response": []
 				},
 				{
-					"name": "초대 수락/거절",
+					"name": "우편 수락/거절 (친구 요청 및 방 초대 통합)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"응답 성공\", function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const jsonData = pm.response.json();",
+									"    if (jsonData.room) {",
+									"        pm.environment.set(\"room_id\", jsonData.room.id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [
@@ -686,13 +759,14 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"accept\": true,\n  \"team\": \"B\"\n}"
+							"raw": "{\n  \"accept\": true\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/mailbox/{{mailbox_id}}/respond/",
 							"host": ["{{base_url}}"],
 							"path": ["api", "mailbox", "{{mailbox_id}}", "respond", ""]
-						}
+						},
+						"description": "친구 요청과 방 초대 모두 이 API로 수락/거절합니다.\\n- 친구 요청: accept=true 시 친구 관계 생성\\n- 방 초대: accept=true 시 자동으로 팀 배정되어 방에 참가"
 					},
 					"response": []
 				}
@@ -725,6 +799,551 @@
 									"value": "team"
 								}
 							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🔄 두 사용자 상호작용 테스트",
+			"description": "두 사용자(User1, User2)가 서로 친구 요청, 방 초대 등을 주고받는 시나리오를 테스트합니다.\n\n**순서대로 실행하세요:**\n1. User1 회원가입\n2. User2 회원가입\n3. User1이 User2에게 친구 요청\n4. User2가 우편함에서 친구 요청 확인 및 수락\n5. User1이 방 생성\n6. User1이 User2를 방에 초대\n7. User2가 방 초대 수락",
+			"item": [
+				{
+					"name": "1️⃣ User1 회원가입",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const jsonData = pm.response.json();",
+									"    pm.environment.set(\"user1_id\", jsonData.id);",
+									"    pm.environment.set(\"user1_access_token\", jsonData.access);",
+									"    pm.environment.set(\"user1_refresh_token\", jsonData.refresh);",
+									"    pm.test(\"User1 회원가입 성공\", function () {",
+									"        pm.response.to.have.status(201);",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"{{user1_username}}\",\n  \"email\": \"user1@test.com\",\n  \"password\": \"testpass123\",\n  \"password_confirm\": \"testpass123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/register/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "auth", "register", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2️⃣ User2 회원가입",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const jsonData = pm.response.json();",
+									"    pm.environment.set(\"user2_id\", jsonData.id);",
+									"    pm.environment.set(\"user2_access_token\", jsonData.access);",
+									"    pm.environment.set(\"user2_refresh_token\", jsonData.refresh);",
+									"    pm.test(\"User2 회원가입 성공\", function () {",
+									"        pm.response.to.have.status(201);",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"{{user2_username}}\",\n  \"email\": \"user2@test.com\",\n  \"password\": \"testpass123\",\n  \"password_confirm\": \"testpass123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/register/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "auth", "register", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3️⃣ [User1] User2에게 친구 요청",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"친구 요청 전송 성공\", function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([201, 200]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user1_access_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"{{user2_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/friends/request/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "friends", "request", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4️⃣ [User2] 우편함 확인",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const jsonData = pm.response.json();",
+									"    if (jsonData.results && jsonData.results.length > 0) {",
+									"        // 친구 요청 메일 찾기",
+									"        const friendRequest = jsonData.results.find(m => m.mail_type === 'friend_request');",
+									"        if (friendRequest) {",
+									"            pm.environment.set(\"mailbox_id\", friendRequest.id);",
+									"            pm.test(\"친구 요청 메일 확인\", function () {",
+									"                pm.expect(friendRequest.mail_type).to.eql('friend_request');",
+									"            });",
+									"        }",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user2_access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/mailbox/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "mailbox", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "5️⃣ [User2] 친구 요청 수락",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"친구 요청 수락 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.message).to.include('수락');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user2_access_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"accept\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/mailbox/{{mailbox_id}}/respond/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "mailbox", "{{mailbox_id}}", "respond", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "6️⃣ [User1] 친구 목록 확인",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"친구 목록에 User2 존재\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.count).to.be.at.least(1);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user1_access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/friends/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "friends", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "7️⃣ [User1] 게임 구역 조회",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const jsonData = pm.response.json();",
+									"    if (jsonData.length > 0) {",
+									"        pm.environment.set(\"game_area_id\", jsonData[0].id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user1_access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/game-areas/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "game-areas", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "8️⃣ [User1] 방 생성",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const jsonData = pm.response.json();",
+									"    pm.environment.set(\"room_id\", jsonData.id);",
+									"    pm.environment.set(\"invite_code\", jsonData.invite_code);",
+									"    pm.test(\"방 생성 성공\", function () {",
+									"        pm.response.to.have.status(201);",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user1_access_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"User1과 User2의 대결\",\n  \"total_participants\": 2,\n  \"start_date\": \"2026-02-01\",\n  \"end_date\": \"2026-02-28\",\n  \"game_area_id\": \"{{game_area_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/rooms/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "rooms", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "9️⃣ [User1] User2를 방에 초대",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"방 초대 전송 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user1_access_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"{{user2_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/rooms/{{room_id}}/invite/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "rooms", "{{room_id}}", "invite", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "🔟 [User2] 우편함에서 방 초대 확인",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const jsonData = pm.response.json();",
+									"    if (jsonData.results && jsonData.results.length > 0) {",
+									"        // 방 초대 메일 찾기",
+									"        const roomInvite = jsonData.results.find(m => m.mail_type === 'room_invite' && m.status === 'unread');",
+									"        if (roomInvite) {",
+									"            pm.environment.set(\"mailbox_id\", roomInvite.id);",
+									"            pm.test(\"방 초대 메일 확인\", function () {",
+									"                pm.expect(roomInvite.mail_type).to.eql('room_invite');",
+									"            });",
+									"        }",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user2_access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/mailbox/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "mailbox", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1️⃣1️⃣ [User2] 방 초대 수락",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"방 초대 수락 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.message).to.include('수락');",
+									"    pm.expect(jsonData.participant.team).to.be.oneOf(['A', 'B']);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user2_access_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"accept\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/mailbox/{{mailbox_id}}/respond/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "mailbox", "{{mailbox_id}}", "respond", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1️⃣2️⃣ [User1] 방 상세 확인 (참가자 확인)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"방에 두 사용자 모두 참가\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.current_participants).to.eql(2);",
+									"    pm.expect(jsonData.participants.length).to.eql(2);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user1_access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/rooms/{{room_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "rooms", "{{room_id}}", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1️⃣3️⃣ [User1] 게임 시작",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"게임 시작\", function () {",
+									"    // 시작일이 지나지 않으면 403 (NOT_START_DATE)",
+									"    // 시작일이 지났으면 200 성공",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 403]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user1_access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/rooms/{{room_id}}/start/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "rooms", "{{room_id}}", "start", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1️⃣4️⃣ [User2] 내가 현재 참가 중인 방 확인",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"내 현재 방 조회 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    if (jsonData) {",
+									"        pm.expect(jsonData).to.have.property('my_participant');",
+									"        pm.expect(jsonData.id).to.eql(pm.environment.get('room_id'));",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user2_access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/rooms/my/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "rooms", "my", ""]
 						}
 					},
 					"response": []

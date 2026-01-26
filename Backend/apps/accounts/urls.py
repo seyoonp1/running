@@ -16,7 +16,7 @@ urlpatterns = [
     path('friends/', views.friends_list, name='friends-list'),
     path('friends/search/', views.search_users, name='friends-search'),
     path('friends/request/', views.send_friend_request, name='friends-request'),
-    path('friends/<uuid:friendship_id>/respond/', views.respond_friend_request, name='friends-respond'),
+    # 친구 요청 수락/거절은 우편함 API (mailbox/{id}/respond/)로 통일
     
     # 우편함 API
     path('mailbox/', views.mailbox_list, name='mailbox-list'),

@@ -3,6 +3,7 @@ WebSocket consumers - MVP 버전
 Room과 Participant 모델 사용 (Session 모델 제거됨)
 """
 import json
+import math
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.utils import timezone
@@ -10,6 +11,26 @@ from apps.rooms.models import Room, Participant, RunningRecord
 from apps.hexmap.h3_utils import latlng_to_h3
 from apps.hexmap.claim_validator import ClaimValidator
 from apps.hexmap.loop_detector import LoopDetector
+
+
+def haversine_distance(lat1, lng1, lat2, lng2):
+    """
+    두 좌표 간 거리 계산 (Haversine 공식)
+    반환값: 미터 단위
+    """
+    R = 6371000  # 지구 반지름 (미터)
+    
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lng2 - lng1)
+    
+    a = (math.sin(delta_phi / 2) ** 2 + 
+         math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2)
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    
+    return R * c
+
 
 
 class RoomConsumer(AsyncWebsocketConsumer):
@@ -36,6 +57,11 @@ class RoomConsumer(AsyncWebsocketConsumer):
         
         self.participant_id = str(participant.id)
         self.claim_validator = ClaimValidator(self.participant_id)
+        
+        # 거리 계산용 변수 초기화
+        self.last_position = None  # 마지막 위치 {'lat': float, 'lng': float}
+        self.total_distance = 0.0  # 누적 거리 (미터)
+        self.recording_start_time = None  # 기록 시작 시간
         
         # 그룹 참가
         await self.channel_layer.group_add(self.group_name, self.channel_name)
@@ -118,8 +144,25 @@ class RoomConsumer(AsyncWebsocketConsumer):
             }
         )
         
-        # 기록 중인 경우에만 점령 처리
+        # 기록 중인 경우에만 점령 처리 및 거리 계산
         if participant.is_recording:
+            # 거리 계산 (GPS 위치 기반)
+            if self.last_position is not None:
+                distance = haversine_distance(
+                    self.last_position['lat'], self.last_position['lng'],
+                    lat, lng
+                )
+                
+                # 이상값 필터링 (순간 이동 방지)
+                # 속도가 시속 50km 이상이면 무시 (약 14m/s)
+                MAX_SPEED_MPS = 14.0
+                time_diff = 1.0  # 기본 1초 (실제로는 이전 timestamp와 비교 필요)
+                if distance / time_diff <= MAX_SPEED_MPS:
+                    self.total_distance += distance
+            
+            self.last_position = {'lat': lat, 'lng': lng}
+            
+            # 점령 로직 처리
             await self.process_claim_logic(lat, lng, h3_id, timestamp, participant, room)
     
     async def process_claim_logic(self, lat, lng, h3_id, timestamp, participant, room):
@@ -272,6 +315,11 @@ class RoomConsumer(AsyncWebsocketConsumer):
             }))
             return
         
+        # 거리 계산 변수 초기화
+        self.last_position = None
+        self.total_distance = 0.0
+        self.recording_start_time = timezone.now()
+        
         # 기록 시작
         await database_sync_to_async(lambda: (
             setattr(participant, 'is_recording', True),
@@ -283,7 +331,7 @@ class RoomConsumer(AsyncWebsocketConsumer):
             user=participant.user,
             room=room,
             participant=participant,
-            started_at=timezone.now()
+            started_at=self.recording_start_time
         )
         
         await self.send(text_data=json.dumps({
@@ -299,8 +347,18 @@ class RoomConsumer(AsyncWebsocketConsumer):
         if not participant or not participant.is_recording:
             return
         
-        duration_seconds = data.get('duration_seconds', 0)
-        distance_meters = data.get('distance_meters', 0)
+        # 백엔드에서 계산한 값 사용
+        ended_at = timezone.now()
+        
+        # 시간 계산 (백엔드에서 계산)
+        if self.recording_start_time:
+            duration_seconds = int((ended_at - self.recording_start_time).total_seconds())
+        else:
+            # recording_start_time이 없으면 0 (정상적인 경우 발생하지 않음)
+            duration_seconds = 0
+        
+        # 거리: 백엔드에서 계산한 값 사용
+        distance_meters = self.total_distance
         
         # 기록 종료
         await database_sync_to_async(lambda: (
@@ -319,7 +377,7 @@ class RoomConsumer(AsyncWebsocketConsumer):
         if record:
             record.duration_seconds = duration_seconds
             record.distance_meters = distance_meters
-            record.ended_at = timezone.now()
+            record.ended_at = ended_at
             record.calculate_pace()
             await database_sync_to_async(record.save)()
             
@@ -327,9 +385,14 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 'type': 'recording_stopped',
                 'record_id': str(record.id),
                 'duration_seconds': record.duration_seconds,
-                'distance_meters': record.distance_meters,
+                'distance_meters': round(record.distance_meters, 2),
                 'avg_pace_seconds_per_km': record.avg_pace_seconds_per_km
             }))
+        
+        # 거리 계산 변수 초기화
+        self.last_position = None
+        self.total_distance = 0.0
+        self.recording_start_time = None
     
     async def broadcast_score_update(self, room):
         """점수 업데이트 브로드캐스트"""

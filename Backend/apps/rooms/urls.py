@@ -11,12 +11,14 @@ urlpatterns = [
     
     # 방 API
     path('rooms/', views.RoomListCreateView.as_view(), name='room-list-create'),
+    path('rooms/my/', views.my_current_room, name='room-my'),
     path('rooms/join/', views.join_room, name='room-join'),
     path('rooms/<uuid:id>/', views.RoomDetailView.as_view(), name='room-detail'),
     path('rooms/<uuid:id>/leave/', views.leave_room, name='room-leave'),
     path('rooms/<uuid:id>/change-team/', views.change_team, name='room-change-team'),
     path('rooms/<uuid:id>/start/', views.start_room, name='room-start'),
     path('rooms/<uuid:id>/invite/', views.invite_to_room, name='room-invite'),
+    path('rooms/<uuid:id>/attendance/', views.attendance_status, name='room-attendance'),
     
     # 러닝 기록 API
     path('records/', views.RunningRecordListView.as_view(), name='record-list'),
