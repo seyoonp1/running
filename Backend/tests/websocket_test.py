@@ -12,10 +12,10 @@ WebSocket 실시간 위치 전파 테스트 스크립트
 테스트 시나리오:
 1. 두 명의 사용자 생성 (user1, user2)
 2. user1이 user2에게 친구 요청 → 수락
-3. 방 생성 (user1이 방장, start_date는 오늘 날짜로 설정)
+3. 방 생성 (user1이 방장, start_date는 현재 일시로 설정)
 4. user1이 user2를 방에 초대
 5. user2가 우편함에서 초대 수락
-6. 방장이 게임 시작 (start_date 검증: 오늘 날짜가 start_date보다 같거나 이후여야 함)
+6. 방장이 게임 시작 (start_date 검증: 현재 시간이 start_date보다 같거나 이후여야 함)
 7. 두 사용자가 WebSocket 연결
 8. user1이 위치 업데이트 → user2가 수신 확인
 9. user1이 기록 시작 → 땅 점령 → user2가 이벤트 수신 확인
@@ -26,7 +26,7 @@ import json
 import requests
 import websockets
 import time
-from datetime import datetime, date
+from datetime import datetime, timedelta
 
 # 서버 설정
 BASE_URL = "http://44.196.254.97"
@@ -200,10 +200,12 @@ async def test_websocket_broadcast():
     game_area_id = game_areas['results'][0]['id']
     print(f"✅ 게임 구역 선택: {game_areas['results'][0]['name']}")
     
-    # 4. 방 생성 (user1이 방장, start_date는 오늘 날짜로 설정)
+    # 4. 방 생성 (user1이 방장, start_date는 현재 일시로 설정)
     print("\n📌 Step 4: 방 생성")
-    today = date.today().isoformat()
-    end_date = (date.today().replace(day=28) if date.today().day <= 28 else date.today().replace(month=date.today().month+1, day=1)).isoformat()
+    now = datetime.now().replace(second=0, microsecond=0)
+    end_at = now + timedelta(days=30)
+    start_date = now.isoformat(timespec='minutes')
+    end_date = end_at.isoformat(timespec='minutes')
     
     response = requests.post(
         f"{BASE_URL}/api/rooms/",
@@ -211,7 +213,7 @@ async def test_websocket_broadcast():
         json={
             "name": f"{TEST_PREFIX}_test_room",
             "total_participants": 2,
-            "start_date": today,
+            "start_date": start_date,
             "end_date": end_date,
             "game_area_id": game_area_id
         }
@@ -225,7 +227,7 @@ async def test_websocket_broadcast():
     room_id = room_data.get('id')
     start_date = room_data.get('start_date')
     print(f"✅ 방 생성 성공: {room_id}")
-    print(f"   시작 날짜: {start_date}")
+    print(f"   시작 일시: {start_date}")
     
     # 5. user1이 user2를 방에 초대
     print("\n📌 Step 5: User1이 User2를 방에 초대")
@@ -286,9 +288,9 @@ async def test_websocket_broadcast():
     if 'participant' in accept_data:
         print(f"   배정된 팀: {accept_data['participant'].get('team')}")
     
-    # 8. 방장이 게임 시작 (start_date 검증: 오늘 날짜가 start_date보다 같거나 이후여야 함)
+    # 8. 방장이 게임 시작 (start_date 검증: 현재 시간이 start_date보다 같거나 이후여야 함)
     print("\n📌 Step 8: 방장이 게임 시작")
-    print(f"   시작 날짜 검증: 오늘({today}) >= 시작 날짜({start_date})")
+    print(f"   시작 일시 검증: 현재({now.isoformat(timespec='minutes')}) >= 시작 일시({start_date})")
     
     response = requests.post(
         f"{BASE_URL}/api/rooms/{room_id}/start/",

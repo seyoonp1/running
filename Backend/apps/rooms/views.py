@@ -360,10 +360,10 @@ def start_room(request, id):
         return Response({'error': 'NOT_FULL', 'message': '모든 인원이 참가해야 시작할 수 있습니다.'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
-    # 시작 날짜 확인
-    today = timezone.now().date()
-    if today < room.start_date:
-        return Response({'error': 'NOT_START_DATE', 'message': f'시작 날짜({room.start_date}) 이후에 시작할 수 있습니다.'}, 
+    # 시작 일시 확인
+    now = timezone.now()
+    if now < room.start_date:
+        return Response({'error': 'NOT_START_DATE', 'message': f'시작 일시({room.start_date}) 이후에 시작할 수 있습니다.'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     # 방 상태 변경

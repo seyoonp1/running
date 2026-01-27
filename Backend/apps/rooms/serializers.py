@@ -82,6 +82,24 @@ class RoomDetailSerializer(serializers.ModelSerializer):
 class RoomCreateSerializer(serializers.ModelSerializer):
     """방 생성 Serializer"""
     game_area_id = serializers.UUIDField(write_only=True)
+    start_date = serializers.DateTimeField(
+        input_formats=[
+            '%Y-%m-%dT%H:%M',
+            '%Y-%m-%d %H:%M',
+            '%Y-%m-%dT%H:%M:%S',
+            '%Y-%m-%d %H:%M:%S',
+            'iso-8601',
+        ]
+    )
+    end_date = serializers.DateTimeField(
+        input_formats=[
+            '%Y-%m-%dT%H:%M',
+            '%Y-%m-%d %H:%M',
+            '%Y-%m-%dT%H:%M:%S',
+            '%Y-%m-%d %H:%M:%S',
+            'iso-8601',
+        ]
+    )
     
     class Meta:
         model = Room
@@ -107,7 +125,7 @@ class RoomCreateSerializer(serializers.ModelSerializer):
         start_date = attrs.get('start_date')
         end_date = attrs.get('end_date')
         if start_date and end_date and start_date > end_date:
-            raise serializers.ValidationError('시작 날짜가 종료 날짜보다 늦을 수 없습니다.')
+            raise serializers.ValidationError('시작 일시가 종료 일시보다 늦을 수 없습니다.')
         return attrs
     
     def create(self, validated_data):

@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 @shared_task
 def check_and_end_games():
     """end_date가 지난 게임들을 종료 처리"""
-    today = timezone.now().date()
-    expired_rooms = Room.objects.filter(status='active', end_date__lt=today)
+    now = timezone.now()
+    expired_rooms = Room.objects.filter(status='active', end_date__lt=now)
 
     for room in expired_rooms:
         process_game_end.delay(str(room.id))

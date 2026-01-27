@@ -86,8 +86,8 @@ Table rooms {
   total_participants int [not null, default: 4, note: '총 인원수 (짝수)']
   
   // 일정
-  start_date date [not null, note: '게임 시작 날짜']
-  end_date date [not null, note: '게임 종료 날짜']
+  start_date timestamp [not null, note: '게임 시작 일시']
+  end_date timestamp [not null, note: '게임 종료 일시']
   
   // 게임 영역 (미리 지정된 구역 선택)
   game_area_id uuid [ref: > game_areas.id, not null, note: '선택한 게임 구역']

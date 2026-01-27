@@ -227,7 +227,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"name\": \"한강 러닝 대결\",\n  \"total_participants\": 4,\n  \"start_date\": \"2026-02-01\",\n  \"end_date\": \"2026-02-28\",\n  \"game_area_id\": \"{{game_area_id}}\"\n}"
+							"raw": "{\n  \"name\": \"한강 러닝 대결\",\n  \"total_participants\": 4,\n  \"start_date\": \"2026-02-01T09:00\",\n  \"end_date\": \"2026-02-28T18:00\",\n  \"game_area_id\": \"{{game_area_id}}\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/rooms/",
@@ -1245,7 +1245,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"name\": \"User1과 User2의 대결\",\n  \"total_participants\": 2,\n  \"start_date\": \"2026-02-01\",\n  \"end_date\": \"2026-02-28\",\n  \"game_area_id\": \"{{game_area_id}}\"\n}"
+							"raw": "{\n  \"name\": \"User1과 User2의 대결\",\n  \"total_participants\": 2,\n  \"start_date\": \"2026-02-01T09:00\",\n  \"end_date\": \"2026-02-28T18:00\",\n  \"game_area_id\": \"{{game_area_id}}\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/rooms/",

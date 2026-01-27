@@ -85,8 +85,8 @@ class Room(models.Model):
     )
     
     # 일정 설정
-    start_date = models.DateField(help_text='게임 시작 날짜')
-    end_date = models.DateField(help_text='게임 종료 날짜')
+    start_date = models.DateTimeField(help_text='게임 시작 일시')
+    end_date = models.DateTimeField(help_text='게임 종료 일시')
     
     # 게임 영역 설정 (미리 지정된 구역 선택)
     game_area = models.ForeignKey(
@@ -170,7 +170,7 @@ class Room(models.Model):
         if self.game_area and not self.game_area.is_active:
             raise ValidationError('비활성화된 게임 구역은 선택할 수 없습니다.')
         if self.start_date and self.end_date and self.start_date > self.end_date:
-            raise ValidationError('시작 날짜가 종료 날짜보다 늦을 수 없습니다.')
+            raise ValidationError('시작 일시가 종료 일시보다 늦을 수 없습니다.')
     
     def __str__(self):
         return f"{self.name} ({self.invite_code})"
