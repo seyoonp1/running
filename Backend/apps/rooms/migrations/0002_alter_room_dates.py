@@ -17,19 +17,4 @@ class Migration(migrations.Migration):
             name='end_date',
             field=models.DateTimeField(help_text='게임 종료 일시'),
         ),
-        migrations.AddField(
-            model_name='participant',
-            name='hexes_claimed',
-            field=models.IntegerField(default=0, help_text='점령한 땅 수'),
-        ),
-        migrations.AddField(
-            model_name='participant',
-            name='rating_change',
-            field=models.IntegerField(default=0, help_text='레이팅 변동'),
-        ),
-        migrations.AddField(
-            model_name='participant',
-            name='is_mvp',
-            field=models.BooleanField(default=False, help_text='MVP 여부'),
-        ),
     ]
