@@ -321,18 +321,10 @@ class RoomConsumer(AsyncWebsocketConsumer):
         self.recording_start_time = timezone.now()
         
         # 기록 시작
-        await database_sync_to_async(lambda: (
-            setattr(participant, 'is_recording', True),
-            participant.save(update_fields=['is_recording'])
-        )[-1])()
+        await self.set_participant_recording(participant, True)
         
         # 러닝 기록 생성
-        record = await database_sync_to_async(RunningRecord.objects.create)(
-            user=participant.user,
-            room=room,
-            participant=participant,
-            started_at=self.recording_start_time
-        )
+        record = await self.create_running_record(participant, room, self.recording_start_time)
         
         await self.send(text_data=json.dumps({
             'type': 'recording_started',
@@ -361,25 +353,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
         distance_meters = self.total_distance
         
         # 기록 종료
-        await database_sync_to_async(lambda: (
-            setattr(participant, 'is_recording', False),
-            participant.save(update_fields=['is_recording'])
-        )[-1])()
+        await self.set_participant_recording(participant, False)
         
         # 마지막 러닝 기록 업데이트
-        record = await database_sync_to_async(
-            lambda: RunningRecord.objects.filter(
-                participant=participant,
-                ended_at__isnull=True
-            ).order_by('-started_at').first()
-        )()
+        record = await self.get_latest_running_record(participant)
         
         if record:
-            record.duration_seconds = duration_seconds
-            record.distance_meters = distance_meters
-            record.ended_at = ended_at
-            record.calculate_pace()
-            await database_sync_to_async(record.save)()
+            await self.update_running_record(record, duration_seconds, distance_meters, ended_at)
             
             await self.send(text_data=json.dumps({
                 'type': 'recording_stopped',
@@ -438,6 +418,39 @@ class RoomConsumer(AsyncWebsocketConsumer):
             participant.save(update_fields=['last_lat', 'last_lng', 'last_h3_id', 'last_location_at'])
         except Participant.DoesNotExist:
             pass
+    
+    @database_sync_to_async
+    def set_participant_recording(self, participant, is_recording):
+        """참가자 기록 상태 변경"""
+        participant.is_recording = is_recording
+        participant.save(update_fields=['is_recording'])
+    
+    @database_sync_to_async
+    def create_running_record(self, participant, room, started_at):
+        """러닝 기록 생성"""
+        return RunningRecord.objects.create(
+            user=participant.user,
+            room=room,
+            participant=participant,
+            started_at=started_at
+        )
+    
+    @database_sync_to_async
+    def get_latest_running_record(self, participant):
+        """가장 최근의 종료되지 않은 러닝 기록 조회"""
+        return RunningRecord.objects.filter(
+            participant=participant,
+            ended_at__isnull=True
+        ).order_by('-started_at').first()
+    
+    @database_sync_to_async
+    def update_running_record(self, record, duration_seconds, distance_meters, ended_at):
+        """러닝 기록 업데이트"""
+        record.duration_seconds = duration_seconds
+        record.distance_meters = distance_meters
+        record.ended_at = ended_at
+        record.calculate_pace()
+        record.save()
     
     @database_sync_to_async
     def add_gauge(self, participant, amount):
