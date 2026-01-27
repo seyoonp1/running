@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,13 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Modal,
+  Image,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Path, Circle, Polygon } from 'react-native-svg';
 import { getRooms, getMyRoom } from '../services/roomService';
+import { useAuth } from '../contexts/AuthContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -79,15 +83,69 @@ const PlayButton = ({ size = 30, fill = '#003D7A' }) => {
 };
 
 export default function GameMainScreen({ navigation }) {
+  const { user } = useAuth();
   const [rooms, setRooms] = useState([]);
-  const [myRoom, setMyRoom] = useState(null); // Add missing state
+  const [myRoom, setMyRoom] = useState(null);
+  const [timeLeft, setTimeLeft] = useState('');
+
+  // 날짜 포맷팅 헬퍼
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}.${month}.${day} ${hours}:${minutes}`;
+  };
+
+  // 카운트다운 효과
+  useEffect(() => {
+    if (!myRoom || !myRoom.start_date) {
+      setTimeLeft('');
+      return;
+    }
+
+    const updateTimer = () => {
+      const now = new Date();
+      const startDate = new Date(myRoom.start_date);
+      const diff = startDate - now;
+
+      if (diff > 0) {
+        // 밀리초 단위를 초 단위로 변환
+        const totalSeconds = Math.floor(diff / 1000);
+        const days = Math.floor(totalSeconds / (3600 * 24));
+        const hours = Math.floor((totalSeconds % (3600 * 24)) / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+
+        let timeString = '';
+        if (days > 0) timeString += `${days}일 `;
+        if (hours > 0) timeString += `${hours}시간 `;
+        if (minutes > 0) timeString += `${minutes}분 `;
+        timeString += `${seconds}초 남음`;
+
+        setTimeLeft(timeString);
+      } else {
+        // 시간이 지났을 때
+        if (myRoom.status === 'active') {
+          setTimeLeft(''); // 이미 active 상태고 시간도 지났으면 표시하지 않음
+        } else {
+          setTimeLeft('곧 시작됩니다!'); // ready 상태지만 시간이 지났다면
+        }
+      }
+    };
+
+    updateTimer(); // 즉시 실행
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [myRoom]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const { getMyRoom } = require('../services/roomService'); // Import here if not imported at top, or ensure top import
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
 
   const loadData = async () => {
     try {
@@ -108,6 +166,12 @@ export default function GameMainScreen({ navigation }) {
       setRefreshing(false);
     }
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -135,17 +199,12 @@ export default function GameMainScreen({ navigation }) {
           {/* 상단 헤더 */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <TouchableOpacity onPress={() => navigation.navigate('RecordList')}>
-                <Text style={styles.headerText}>내 기록 &gt;</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => navigation.navigate('RecordStats')}>
-                <Text style={styles.headerText}>통계 &gt;</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => navigation.navigate('FriendList')}>
-                <Text style={styles.headerText}>친구 &gt;</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => navigation.navigate('Mailbox')}>
-                <Text style={styles.headerText}>우편함 &gt;</Text>
+              {/* 프로필 버튼 (사이드 메뉴 열기) */}
+              <TouchableOpacity onPress={() => setIsMenuOpen(true)}>
+                <View style={styles.profileIconContainer}>
+                  {/* 임시 프로필 이미지 또는 아이콘 */}
+                  <Text style={styles.profileIconText}>👤</Text>
+                </View>
               </TouchableOpacity>
             </View>
             <View style={styles.navigationArrows}>
@@ -171,12 +230,20 @@ export default function GameMainScreen({ navigation }) {
                 <>
                   <Text style={styles.cardDays} numberOfLines={1}>{myRoom.name}</Text>
                   <Text style={styles.cardTimes}>{myRoom.game_area?.name || '지역 정보 없음'}</Text>
+                  <Text style={styles.cardDates}>
+                    {formatDate(myRoom.start_date)} ~ {formatDate(myRoom.end_date)}
+                  </Text>
                   <Text style={[
                     styles.cardStatus,
                     { color: myRoom.status === 'active' ? '#4CAF50' : '#FF5252', fontWeight: '600' }
                   ]}>
                     {myRoom.status === 'active' ? '● 게임 진행 중' : '○ 게임 준비 중'}
                   </Text>
+                  {timeLeft ? (
+                    <Text style={styles.countdownText}>
+                      (시작까지 {timeLeft})
+                    </Text>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -212,7 +279,7 @@ export default function GameMainScreen({ navigation }) {
                     }
                   }}
                 >
-                  <PlayButton size={30} />
+                  <PlayButton size={30} fill={myRoom?.status === 'ready' ? '#FF5252' : '#4CAF50'} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -266,6 +333,58 @@ export default function GameMainScreen({ navigation }) {
           </View>
         </ScrollView>
       </View>
+
+      {/* 사이드 메뉴 (슬라이드 모달) */}
+      <Modal
+        visible={isMenuOpen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsMenuOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          {/* 배경 누르면 닫기 */}
+          <TouchableOpacity
+            style={styles.modalBackground}
+            activeOpacity={1}
+            onPress={() => setIsMenuOpen(false)}
+          />
+
+          {/* 메뉴 컨텐츠 */}
+          <View style={styles.sideMenu}>
+            {/* 메뉴 헤더: 프로필 정보 */}
+            <View style={styles.menuHeader}>
+              <View style={styles.bigProfileIcon}>
+                <Text style={styles.bigProfileIconText}>👤</Text>
+              </View>
+              <Text style={styles.menuUsername}>{user?.username || '게스트'}</Text>
+              <Text style={styles.menuLevel}>Lv.{user?.level || 1}</Text>
+            </View>
+
+            {/* 메뉴 리스트 */}
+            <View style={styles.menuItems}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); navigation.navigate('RecordList'); }}>
+                <Text style={styles.menuItemIcon}>📊</Text>
+                <Text style={styles.menuItemText}>내 기록</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); navigation.navigate('RecordStats'); }}>
+                <Text style={styles.menuItemIcon}>📈</Text>
+                <Text style={styles.menuItemText}>통계</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); navigation.navigate('FriendList'); }}>
+                <Text style={styles.menuItemIcon}>👥</Text>
+                <Text style={styles.menuItemText}>친구</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); navigation.navigate('Mailbox'); }}>
+                <Text style={styles.menuItemIcon}>📬</Text>
+                <Text style={styles.menuItemText}>우편함</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -345,10 +464,22 @@ const styles = StyleSheet.create({
     color: '#000000',
     marginBottom: 4,
   },
+  cardDates: {
+    fontSize: 14,
+    color: '#666666',
+    marginTop: 4,
+    marginBottom: 4,
+  },
   cardStatus: {
     fontSize: 14,
     color: '#999999',
     marginTop: 8,
+  },
+  countdownText: {
+    fontSize: 14,
+    color: '#FF5252',
+
+    marginTop: 4,
   },
   cardBottom: {
     flexDirection: 'row',
@@ -473,5 +604,95 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: '#999',
+  },
+  // 프로필 아이콘 스타일
+  profileIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E3F2FD',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#003D7A',
+  },
+  profileIconText: {
+    fontSize: 24,
+  },
+  // 사이드 메뉴 스타일
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    flexDirection: 'row',
+  },
+  modalBackground: {
+    flex: 1,
+  },
+  sideMenu: {
+    width: width * 0.7, // 화면의 70% 차지
+    backgroundColor: '#FFFFFF',
+    height: '100%',
+    padding: 20,
+    paddingTop: 50,
+    shadowColor: "#000",
+    shadowOffset: { width: 2, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    position: 'absolute', // 왼쪽 고정
+    left: 0,
+    top: 0,
+    bottom: 0,
+  },
+  menuHeader: {
+    alignItems: 'center',
+    marginBottom: 40,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
+  },
+  bigProfileIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#E3F2FD',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: '#003D7A',
+  },
+  bigProfileIconText: {
+    fontSize: 40,
+  },
+  menuUsername: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000000',
+    marginBottom: 5,
+  },
+  menuLevel: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  menuItems: {
+    gap: 15,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#F8F9FA',
+  },
+  menuItemIcon: {
+    fontSize: 20,
+    marginRight: 15,
+  },
+  menuItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333333',
   },
 });

@@ -51,8 +51,8 @@ export const mockRooms = {
       total_participants: 4,
       current_participants: 2,
       status: 'ready',
-      start_date: '2026-02-01',
-      end_date: '2026-02-28',
+      start_date: '2026-01-27T12:00:00',
+      end_date: '2026-02-28T18:00:00',
     },
     {
       id: '2',
@@ -92,8 +92,8 @@ export const mockRoomDetail = {
   current_participants: 2,
   team_a_count: 1,
   team_b_count: 1,
-  start_date: '2026-02-01',
-  end_date: '2026-02-28',
+  start_date: '2026-01-27T12:00:00',
+  end_date: '2026-02-28T18:00:00',
   status: 'ready',
   invite_code: 'ABC123',
   game_area: {
@@ -111,16 +111,16 @@ export const mockRoomDetail = {
     {
       id: 'p1',
       user: { id: 'user1', username: 'runner1' },
-      team: 'A',
-      is_host: true,
+      team: 'B',
+      is_host: false,
       paintball_count: 5,
       super_paintball_count: 1,
     },
     {
       id: 'p2',
       user: { id: 'user2', username: 'runner2' },
-      team: 'B',
-      is_host: false,
+      team: 'A',
+      is_host: true,
       paintball_count: 3,
       super_paintball_count: 0,
     },
@@ -170,8 +170,8 @@ export const mockApi = {
       my_participant: {
         id: 'p2',
         user: { id: 'user2', username: 'runner2' },
-        team: 'B',
-        is_host: false,
+        team: 'A',
+        is_host: true,
         is_recording: false,
         paintball_count: 5,
         super_paintball_count: 1,
@@ -223,7 +223,7 @@ export const mockApi = {
       room: {
         id: roomId,
         status: 'active',
-        start_date: '2026-02-01',
+        start_date: '2026-01-27T12:00:00',
       },
     };
   },
@@ -325,7 +325,7 @@ export const recordMockApi = {
     const duration = 1500 + Math.floor(Math.random() * 1500); // 25-50분
     const distance = 3000 + Math.floor(Math.random() * 4000); // 3-7km
     const pace = Math.round((duration / distance) * 1000); // 초/km
-    
+
     return {
       id: recordId,
       duration_seconds: duration,
@@ -339,7 +339,7 @@ export const recordMockApi = {
   getRecords: async (params = {}) => {
     await delay(500);
     let results = [...mockRecords.results];
-    
+
     // 필터링 (간단한 Mock)
     if (params.year) {
       // 년도 필터링은 Mock에서 생략
@@ -350,7 +350,7 @@ export const recordMockApi = {
     if (params.week) {
       // 주 필터링은 Mock에서 생략
     }
-    
+
     return {
       count: results.length,
       results: results,
@@ -360,12 +360,12 @@ export const recordMockApi = {
   getRecordStats: async (period = null) => {
     await delay(500);
     const allRecords = mockRecords.results;
-    
+
     const totalDistance = allRecords.reduce((sum, r) => sum + r.distance_meters, 0);
     const totalDuration = allRecords.reduce((sum, r) => sum + r.duration_seconds, 0);
     const totalRuns = allRecords.length;
     const avgPace = totalDistance > 0 ? (totalDuration / totalDistance) * 1000 : 0;
-    
+
     return {
       period: period || 'all',
       total_distance_meters: totalDistance,
@@ -479,7 +479,7 @@ export const mailboxMockApi = {
   getMailbox: async (params = {}) => {
     await delay(500);
     let results = [...mockMailbox.results];
-    
+
     // 필터링
     if (params.status) {
       results = results.filter((mail) => mail.status === params.status);
@@ -487,7 +487,7 @@ export const mailboxMockApi = {
     if (params.mail_type) {
       results = results.filter((mail) => mail.mail_type === params.mail_type);
     }
-    
+
     return {
       count: results.length,
       results: results,
@@ -497,15 +497,15 @@ export const mailboxMockApi = {
   respondToMail: async (mailId, accept) => {
     await delay(500);
     const mail = mockMailbox.results.find((m) => m.id === mailId);
-    
+
     if (!mail) {
       throw new Error('메일을 찾을 수 없습니다.');
     }
-    
+
     if (mail.status !== 'unread' && mail.status !== 'read') {
       throw new Error('이미 처리된 메일입니다.');
     }
-    
+
     if (accept) {
       if (mail.mail_type === 'friend_request') {
         return {
@@ -533,7 +533,7 @@ export const mailboxMockApi = {
         };
       }
     }
-    
+
     return { message: '처리되었습니다.' };
   },
 };

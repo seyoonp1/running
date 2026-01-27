@@ -20,8 +20,11 @@ import {
   getAttendance,
 } from '../services/roomService';
 
+import { useAuth } from '../contexts/AuthContext';
+
 export default function RoomDetailScreen({ navigation, route }) {
   const { roomId } = route.params;
+  const { user } = useAuth(); // AuthContext에서 user 가져오기
   const [loading, setLoading] = useState(true);
   const [room, setRoom] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -30,9 +33,16 @@ export default function RoomDetailScreen({ navigation, route }) {
   const [showAttendance, setShowAttendance] = useState(false);
   const [friendUserId, setFriendUserId] = useState('');
   const [attendanceData, setAttendanceData] = useState(null);
-  
+
   // 현재 사용자가 방장인지 확인
-  const myParticipant = room?.my_participant || room?.participants?.find((p) => p.is_host);
+  // 1. room.my_participant (백엔드에서 명시적으로 준 내 정보)
+  // 2. user.id로 찾기 (AuthContext 정보와 매칭)
+  // 3. (Mock용 Fallback) 방장 또는 첫 번째 참가자
+  const myParticipant =
+    room?.my_participant ||
+    room?.participants?.find((p) => p.user?.id === user?.id) ||
+    room?.participants?.find((p) => p.is_host); // Mock 테스트용 최후의 수단
+
   const isHost = myParticipant?.is_host || false;
   const myTeam = myParticipant?.team;
 
@@ -57,11 +67,12 @@ export default function RoomDetailScreen({ navigation, route }) {
   const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    return date.toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}.${month}.${day} ${hours}:${minutes}`;
   };
 
   const handleLeaveRoom = async () => {
@@ -107,8 +118,13 @@ export default function RoomDetailScreen({ navigation, route }) {
   };
 
   const handleStartRoom = async () => {
-    if (room.current_participants < room.total_participants) {
-      Alert.alert('알림', '모든 인원이 찬 후에 시작할 수 있습니다.');
+    // 인원 체크: 최소 2명 이상, 짝수 인원이어야 함
+    if (room.current_participants < 2) {
+      Alert.alert('알림', '최소 2명의 참가자가 필요합니다.');
+      return;
+    }
+    if (room.current_participants % 2 !== 0) {
+      Alert.alert('알림', '참가자 수는 짝수여야 합니다.');
       return;
     }
 
@@ -120,8 +136,15 @@ export default function RoomDetailScreen({ navigation, route }) {
           try {
             setActionLoading(true);
             await startRoom(roomId);
-            Alert.alert('성공', '게임이 시작되었습니다.');
-            loadRoomDetail(); // 방 정보 다시 로드
+            Alert.alert('성공', '게임이 시작되었습니다.', [
+              {
+                text: '확인',
+                onPress: () => {
+                  // 게임 화면으로 이동
+                  navigation.replace('GamePlay', { roomId });
+                }
+              }
+            ]);
           } catch (error) {
             Alert.alert('오류', error.message || '게임 시작에 실패했습니다.');
           } finally {
@@ -192,9 +215,18 @@ export default function RoomDetailScreen({ navigation, route }) {
 
         {/* 방 정보 카드 */}
         <View style={styles.infoCard}>
+          {/* 출석 버튼 */}
+          <TouchableOpacity
+            style={styles.attendanceButton}
+            onPress={handleShowAttendance}
+            disabled={actionLoading}
+          >
+            <Text style={styles.attendanceButtonText}>출석</Text>
+          </TouchableOpacity>
+
           <Text style={styles.roomName}>{room.name}</Text>
           <Text style={styles.inviteCode}>초대 코드: {room.invite_code}</Text>
-          
+
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>상태:</Text>
             <Text style={[styles.infoValue, styles.statusBadge, room.status === 'active' && styles.statusActive]}>
@@ -226,70 +258,78 @@ export default function RoomDetailScreen({ navigation, route }) {
           )}
         </View>
 
-        {/* 팀 정보 */}
-        <View style={styles.teamSection}>
-          <View style={[styles.teamCard, styles.teamA]}>
-            <Text style={styles.teamTitle}>A팀</Text>
-            <Text style={styles.teamCount}>
-              {room.team_a_count || 0} / {room.total_participants / 2}
-            </Text>
-          </View>
-          <View style={[styles.teamCard, styles.teamB]}>
-            <Text style={styles.teamTitle}>B팀</Text>
-            <Text style={styles.teamCount}>
-              {room.team_b_count || 0} / {room.total_participants / 2}
-            </Text>
-          </View>
-        </View>
+        {/* 팀 및 참가자 정보 (2열 레이아웃) */}
+        <View style={styles.teamContainer}>
+          {/* A팀 컬럼 */}
+          <View style={styles.teamColumn}>
+            <TouchableOpacity
+              style={[
+                styles.teamHeader,
+                styles.teamAHeader,
+                myTeam === 'A' && styles.selectedTeamHeader // 내 팀 강조
+              ]}
+              onPress={() => myTeam !== 'A' && handleChangeTeam('A')}
+              disabled={loading || room.status !== 'ready' || myTeam === 'A'}
+            >
+              <Text style={[styles.teamTitle, myTeam === 'A' && styles.selectedTeamText]}>A팀</Text>
+              <Text style={styles.teamCount}>
+                {room.team_a_count || 0} / {room.total_participants / 2}
+              </Text>
+            </TouchableOpacity>
 
-        {/* 참가자 목록 */}
-        <View style={styles.participantsSection}>
-          <Text style={styles.sectionTitle}>참가자</Text>
-          {room.participants && room.participants.length > 0 ? (
-            room.participants.map((participant) => (
-              <View key={participant.id} style={styles.participantItem}>
-                <View style={styles.participantInfo}>
-                  <Text style={styles.participantName}>
-                    {participant.user?.username || 'Unknown'}
-                  </Text>
-                  <View style={[styles.teamBadge, participant.team === 'A' ? styles.teamABadge : styles.teamBBadge]}>
-                    <Text style={styles.teamBadgeText}>{participant.team}팀</Text>
+            <View style={styles.teamList}>
+              {room.participants
+                ?.filter(p => p.team === 'A')
+                .map((participant) => (
+                  <View key={participant.id} style={styles.participantItemSmall}>
+                    <Text style={styles.participantNameSmall} numberOfLines={1}>
+                      {participant.user?.username}
+                    </Text>
+                    <Text style={styles.levelText}>Lv.{participant.user?.level || Math.floor(Math.random() * 30) + 1}</Text>
+                    {participant.is_host && <Text style={styles.hostIcon}>👑</Text>}
                   </View>
-                  {participant.is_host && (
-                    <View style={styles.hostBadge}>
-                      <Text style={styles.hostBadgeText}>방장</Text>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.paintballInfo}>
-                  <Text style={styles.paintballText}>
-                    페인트볼: {participant.paintball_count || 0}
-                  </Text>
-                  <Text style={styles.paintballText}>
-                    슈퍼: {participant.super_paintball_count || 0}
-                  </Text>
-                </View>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>참가자가 없습니다.</Text>
-          )}
+                ))}
+            </View>
+          </View>
+
+          {/* B팀 컬럼 */}
+          <View style={styles.teamColumn}>
+            <TouchableOpacity
+              style={[
+                styles.teamHeader,
+                styles.teamBHeader,
+                myTeam === 'B' && styles.selectedTeamHeader // 내 팀 강조
+              ]}
+              onPress={() => myTeam !== 'B' && handleChangeTeam('B')}
+              disabled={loading || room.status !== 'ready' || myTeam === 'B'}
+            >
+              <Text style={[styles.teamTitle, myTeam === 'B' && styles.selectedTeamText]}>B팀</Text>
+              <Text style={styles.teamCount}>
+                {room.team_b_count || 0} / {room.total_participants / 2}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.teamList}>
+              {room.participants
+                ?.filter(p => p.team === 'B')
+                .map((participant) => (
+                  <View key={participant.id} style={styles.participantItemSmall}>
+                    <Text style={styles.participantNameSmall} numberOfLines={1}>
+                      {participant.user?.username}
+                    </Text>
+                    <Text style={styles.levelText}>Lv.{participant.user?.level || Math.floor(Math.random() * 30) + 1}</Text>
+                    {participant.is_host && <Text style={styles.hostIcon}>👑</Text>}
+                  </View>
+                ))}
+            </View>
+          </View>
         </View>
 
         {/* 액션 버튼들 */}
         <View style={styles.actionsSection}>
           {room.status === 'ready' && (
             <>
-              {/* 팀 변경 */}
-              {myParticipant && !isHost && (
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => setShowTeamChange(true)}
-                  disabled={actionLoading}
-                >
-                  <Text style={styles.actionButtonText}>팀 변경</Text>
-                </TouchableOpacity>
-              )}
+              {/* 팀 변경 버튼 제거됨 (팀 헤더 클릭으로 통합) */}
 
               {/* 친구 초대 */}
               <TouchableOpacity
@@ -305,7 +345,7 @@ export default function RoomDetailScreen({ navigation, route }) {
                 <TouchableOpacity
                   style={[styles.actionButton, styles.startButton]}
                   onPress={handleStartRoom}
-                  disabled={actionLoading || room.current_participants < room.total_participants}
+                  disabled={actionLoading || room.current_participants < 2 || room.current_participants % 2 !== 0}
                 >
                   <Text style={styles.startButtonText}>게임 시작</Text>
                 </TouchableOpacity>
@@ -323,15 +363,6 @@ export default function RoomDetailScreen({ navigation, route }) {
               )}
             </>
           )}
-
-          {/* 출석 현황 */}
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={handleShowAttendance}
-            disabled={actionLoading}
-          >
-            <Text style={styles.actionButtonText}>출석 현황</Text>
-          </TouchableOpacity>
 
           {/* 게임 플레이 (active 상태일 때) */}
           {room.status === 'active' && (
@@ -514,6 +545,28 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     fontWeight: '500',
   },
+  attendanceButton: {
+    position: 'absolute',
+    top: 15,
+    right: 15,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#003D7A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  attendanceButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
   infoRow: {
     flexDirection: 'row',
     marginBottom: 10,
@@ -540,108 +593,80 @@ const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
     color: '#FFFFFF',
   },
-  teamSection: {
+  teamContainer: {
     flexDirection: 'row',
+    gap: 15,
     marginBottom: 20,
-    gap: 10,
   },
-  teamCard: {
+  teamColumn: {
     flex: 1,
+  },
+  teamHeader: {
     padding: 15,
     borderRadius: 12,
     alignItems: 'center',
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  teamA: {
-    backgroundColor: '#E3F2FD',
-    borderWidth: 2,
-    borderColor: '#2196F3',
+  teamAHeader: {
+    backgroundColor: '#E3F2FD', // Light Blue
   },
-  teamB: {
-    backgroundColor: '#FFF3E0',
+  teamBHeader: {
+    backgroundColor: '#FFF3E0', // Light Orange
+  },
+  selectedTeamHeader: {
     borderWidth: 2,
-    borderColor: '#FF9800',
+    borderColor: '#003D7A', // Highlight border
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
   },
   teamTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 8,
+    fontWeight: '500', // Normal
+    marginBottom: 4,
+    color: '#333',
+  },
+  selectedTeamText: {
+    fontWeight: 'bold', // Bold for my team
+    color: '#000000',
   },
   teamCount: {
-    fontSize: 16,
-    color: '#666',
-  },
-  participantsSection: {
-    marginTop: 10,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000000',
-    marginBottom: 15,
-  },
-  participantItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 15,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 8,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  participantInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  participantName: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#000000',
-    marginRight: 10,
-  },
-  teamBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  teamABadge: {
-    backgroundColor: '#2196F3',
-  },
-  teamBBadge: {
-    backgroundColor: '#FF9800',
-  },
-  teamBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  hostBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: '#003D7A',
-  },
-  hostBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  paintballInfo: {
-    alignItems: 'flex-end',
-  },
-  paintballText: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 2,
-  },
-  emptyText: {
     fontSize: 14,
+    color: '#666',
+  },
+  teamList: {
+    backgroundColor: '#FAFAFA',
+    borderRadius: 8,
+    minHeight: 100,
+    padding: 5,
+  },
+  participantItemSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 10,
+    marginBottom: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#EEEEEE',
+  },
+  participantNameSmall: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  levelText: {
+    fontSize: 12,
     color: '#999',
-    textAlign: 'center',
-    padding: 20,
+    marginRight: 5,
+  },
+  hostIcon: {
+    fontSize: 14,
   },
   actionsSection: {
     marginTop: 20,

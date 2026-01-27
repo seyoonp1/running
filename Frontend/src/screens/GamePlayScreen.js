@@ -36,6 +36,7 @@ export default function GamePlayScreen({ navigation, route }) {
   const mapRef = useRef(null);
 
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [currentRecordId, setCurrentRecordId] = useState(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -65,6 +66,7 @@ export default function GamePlayScreen({ navigation, route }) {
 
       // 현재 위치 가져오기
       const currentLocation = await Location.getCurrentPositionAsync({});
+      console.log('현재 위치:', currentLocation.coords);
       if (mounted) {
         setLocation(currentLocation.coords);
       }
@@ -84,20 +86,18 @@ export default function GamePlayScreen({ navigation, route }) {
     };
   }, [roomId]);
 
-  // 2. 타이머
+  // 2. 타이머 (일시중단 시에는 타이머만 멈춤)
   useEffect(() => {
     let interval = null;
-    if (isRecording) {
+    if (isRecording && !isPaused) {
       interval = setInterval(() => {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
-    } else {
-      setRecordingTime(0);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isRecording]);
+  }, [isRecording, isPaused]);
 
   // 소켓 리스너 설정
   const setupSocketListeners = () => {
@@ -176,14 +176,48 @@ export default function GamePlayScreen({ navigation, route }) {
     }
   };
 
-  // 4. 기록 종료 핸들러
-  const handleStopRecord = async () => {
-    if (!currentRecordId) return;
+  // 4. 일시중단 핸들러 (팝업 없이 즉시 실행)
+  const handlePauseRecord = () => {
+    if (subscription) {
+      subscription.remove();
+      setSubscription(null);
+    }
+    setIsPaused(true);
+  };
 
-    Alert.alert('확인', '기록을 종료하시겠습니까?', [
+  // 5. 재개 핸들러
+  const handleResumeRecord = async () => {
+    try {
+      // 위치 추적 재시작
+      const sub = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          distanceInterval: 5,
+          timeInterval: 1000,
+        },
+        (newLocation) => {
+          const { latitude, longitude } = newLocation.coords;
+          setLocation(newLocation.coords);
+          setRouteCoordinates((prev) => [...prev, { latitude, longitude }]);
+          if (roomId) {
+            socketService.sendLocationUpdate(latitude, longitude);
+          }
+        }
+      );
+      setSubscription(sub);
+      setIsPaused(false);
+    } catch (error) {
+      Alert.alert('오류', '재개에 실패했습니다.');
+    }
+  };
+
+  // 6. 완전종료 핸들러 (확인 팝업 표시)
+  const handleCompleteStop = () => {
+    Alert.alert('확인', '기록을 완전히 종료하고 메인 화면으로 돌아가시겠습니까?', [
       { text: '취소', style: 'cancel' },
       {
         text: '종료',
+        style: 'destructive',
         onPress: async () => {
           try {
             setLoading(true);
@@ -194,17 +228,20 @@ export default function GamePlayScreen({ navigation, route }) {
               setSubscription(null);
             }
 
-            // API 호출
-            const result = await stopRecord(currentRecordId);
-            setIsRecording(false);
-            setCurrentRecordId(null);
+            // API 호출 (기록 저장)
+            if (currentRecordId) {
+              await stopRecord(currentRecordId);
+            }
 
-            Alert.alert('기록 완료',
-              `거리: ${(result.distance_meters / 1000).toFixed(2)} km\n` +
-              `시간: ${formatDuration(result.duration_seconds)}\n` +
-              `페이스: ${formatPace(result.avg_pace_seconds_per_km)}`,
-              [{ text: '확인', onPress: () => navigation.goBack() }] // 종료 후 뒤로가기
-            );
+            // 상태 초기화
+            setIsRecording(false);
+            setIsPaused(false);
+            setCurrentRecordId(null);
+            setRecordingTime(0);
+            setRouteCoordinates([]);
+
+            // GameMainScreen으로 이동
+            navigation.navigate('GameMain');
           } catch (error) {
             Alert.alert('오류', error.message || '기록 종료에 실패했습니다.');
           } finally {
@@ -322,13 +359,32 @@ export default function GamePlayScreen({ navigation, route }) {
             {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>기록 시작</Text>}
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            style={[styles.controlButton, styles.stopButton]}
-            onPress={handleStopRecord}
-            disabled={loading}
-          >
-            {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>기록 종료</Text>}
-          </TouchableOpacity>
+          <View style={styles.recordingControls}>
+            {isPaused ? (
+              <TouchableOpacity
+                style={[styles.controlButton, styles.resumeButton]}
+                onPress={handleResumeRecord}
+                disabled={loading}
+              >
+                <Text style={styles.buttonText}>재개</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.controlButton, styles.pauseButton]}
+                onPress={handlePauseRecord}
+                disabled={loading}
+              >
+                <Text style={styles.buttonText}>일시중단</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.controlButton, styles.stopButton]}
+              onPress={handleCompleteStop}
+              disabled={loading}
+            >
+              {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>완전종료</Text>}
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     </SafeAreaView>
@@ -392,8 +448,13 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
-  controlButton: {
+  recordingControls: {
     width: width * 0.8,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  controlButton: {
+    flex: 1,
     paddingVertical: 18,
     borderRadius: 30,
     alignItems: 'center',
@@ -405,6 +466,12 @@ const styles = StyleSheet.create({
   },
   startButton: {
     backgroundColor: '#003D7A',
+  },
+  pauseButton: {
+    backgroundColor: '#FFA500',
+  },
+  resumeButton: {
+    backgroundColor: '#4CAF50',
   },
   stopButton: {
     backgroundColor: '#FF6B35',
