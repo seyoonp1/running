@@ -1,7 +1,10 @@
+import logging
 from django.db import transaction
 from django.utils import timezone
 
 from apps.rooms.models import Participant, RunningRecord
+
+logger = logging.getLogger(__name__)
 
 
 class RankingService:
@@ -13,13 +16,20 @@ class RankingService:
         return int(round(self.K_FACTOR * (result - expected)))
 
     def compute_hex_counts(self, room):
+        """각 사용자가 점령한 hex 개수 계산"""
         ownerships = room.current_hex_ownerships or {}
         counts = {}
-        for hex_data in ownerships.values():
+        for h3_id, hex_data in ownerships.items():
             user_id = hex_data.get('user_id')
             if user_id:
                 key = str(user_id)
                 counts[key] = counts.get(key, 0) + 1
+        logger.info(
+            "compute_hex_counts: room=%s total_hexes=%d counts=%s",
+            room.id,
+            len(ownerships),
+            counts,
+        )
         return counts
 
     def compute_team_avg_ratings(self, participants):
@@ -110,6 +120,14 @@ class RankingService:
                 participant.hexes_claimed = hex_counts.get(str(user.id), 0)
                 participant.is_mvp = bool(bonus)
                 participant.save(update_fields=['rating_change', 'hexes_claimed', 'is_mvp'])
+                
+                logger.info(
+                    "Game end: participant=%s user=%s hexes_claimed=%d rating_change=%d",
+                    participant.id,
+                    user.username,
+                    participant.hexes_claimed,
+                    participant.rating_change,
+                )
 
                 user.rating = user.rating + total_change
                 user.games_played += 1

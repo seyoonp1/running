@@ -277,14 +277,16 @@ class RoomConsumer(AsyncWebsocketConsumer):
         
         if existing:
             if existing.get('team') == team:
-                # 같은 팀의 땅 → +60 게이지
+                # 같은 팀의 땅 → +60 게이지만 (user_id는 변경하지 않음, 점령으로 카운트되지 않음)
                 gauge_to_add = 60
                 logger.debug(
-                    "Claim ignored (same team): participant=%s h3_id=%s team=%s",
+                    "Claim ignored (same team): participant=%s h3_id=%s team=%s existing_user_id=%s",
                     self.participant_id,
                     h3_id,
                     team,
+                    existing.get('user_id'),
                 )
+                # user_id를 변경하지 않으므로 원래 점령자가 계속 카운트됨
             else:
                 # 상대 팀 땅 점령
                 current_ownerships[h3_id] = {
