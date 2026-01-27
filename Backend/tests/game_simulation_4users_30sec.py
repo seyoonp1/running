@@ -446,9 +446,10 @@ async def test_game_simulation_30sec():
     # 5. 방 생성 (start_date는 현재 시간으로 설정)
     print("\n📌 Step 5: 방 생성")
     now = datetime.now().replace(second=0, microsecond=0)
-    end_at = now + timedelta(days=30)
-    start_date = now.isoformat(timespec='minutes')
-    end_date = end_at.isoformat(timespec='minutes')
+    # end_date는 게임 시작 후 GAME_DURATION_SECONDS초 후로 설정
+    end_at = now + timedelta(seconds=GAME_DURATION_SECONDS + 5)  # 5초 여유
+    start_date = now.isoformat(timespec='seconds')
+    end_date = end_at.isoformat(timespec='seconds')
 
     response = requests.post(
         f"{BASE_URL}/api/rooms/",
@@ -469,6 +470,7 @@ async def test_game_simulation_30sec():
     room_id = room_data.get("id")
     print(f"✅ 방 생성 성공: {room_id}")
     print(f"   시작 일시: {start_date}")
+    print(f"   종료 일시: {end_date}")
 
     # 6. user1이 user2~user4를 방에 초대
     print("\n📌 Step 6: User1이 User2~User4를 방에 초대")
@@ -576,8 +578,11 @@ async def test_game_simulation_30sec():
         return False
 
     # 11. 게임 결과 확인
-    print("\n📌 Step 11: 게임 결과 확인")
-    await asyncio.sleep(2)  # 결과 처리 대기
+    print("\n📌 Step 11: 게임 종료 대기 및 결과 확인")
+    # end_date까지 대기 + Celery 태스크 처리 시간
+    wait_time = GAME_DURATION_SECONDS + 10  # 10초 여유
+    print(f"   게임 종료 태스크 실행 대기 중... ({wait_time}초)")
+    await asyncio.sleep(wait_time)
     
     response = requests.get(
         f"{BASE_URL}/api/rooms/{room_id}/", headers=user1.get_headers()
