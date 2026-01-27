@@ -100,6 +100,9 @@ export default function GamePlayScreen({ navigation, route }) {
   const [attendanceData, setAttendanceData] = useState(null);
   const [hasAcquiredHex, setHasAcquiredHex] = useState(false); // 땅 획득 여부 (도장용)
 
+  // 헥사곤 하이라이트 상태
+  const [highlightedTeam, setHighlightedTeam] = useState(null); // null, 'A', 'B'
+
   // 0. 헥사곤 그리드 초기화 (카이스트 지역 시뮬레이션)
   const initHexGrid = () => {
     console.log('🔷 initHexGrid 시작...');
@@ -481,6 +484,12 @@ export default function GamePlayScreen({ navigation, route }) {
       : attendanceData.consecutive_days
   ) : 0;
 
+  // 팀 하이라이트 토글 핸들러
+  const handleTeamHighlight = (team) => {
+    console.log(`🔘 팀 ${team} 클릭됨! 현재 상태: ${highlightedTeam}`);
+    setHighlightedTeam(prev => prev === team ? null : team);
+  };
+
   return (
     <View style={styles.container}>
       {/* 지도 영역 (전체 배경) */}
@@ -512,22 +521,67 @@ export default function GamePlayScreen({ navigation, route }) {
                 longitude: lng,
               }));
 
-              const fillColor = data.team === 'A'
-                ? 'rgba(33, 150, 243, 0.3)' // 파랑 반투명 (투명도 조절)
-                : 'rgba(255, 152, 0, 0.3)'; // 주황 반투명 (투명도 조절)
-              const strokeColor = data.team === 'A'
-                ? '#1976D2' // 파랑 테두리
-                : '#F57C00'; // 주황 테두리
+              // 하이라이트 효과 데이터 준비
+              const isHighlighted = highlightedTeam === data.team;
+              const isDimmed = highlightedTeam && highlightedTeam !== data.team;
 
-              return (
-                <Polygon
-                  key={h3Id}
-                  coordinates={coordinates}
-                  fillColor={fillColor}
-                  strokeColor={strokeColor}
-                  strokeWidth={1}
-                />
-              );
+              const polygons = [];
+
+              if (isHighlighted) {
+                // 1. 그림자 (원래 위치)
+                polygons.push(
+                  <Polygon
+                    key={`${h3Id}-shadow`}
+                    coordinates={coordinates}
+                    fillColor="rgba(0, 0, 0, 0.2)"
+                    strokeColor="transparent"
+                    strokeWidth={0}
+                    zIndex={1}
+                  />
+                );
+
+                // 2. 본체 (위로 떠오름 - 좌표 이동)
+                const floatedCoordinates = coordinates.map(c => ({
+                  latitude: c.latitude + 0.00008, // 위로 살짝 이동 (부양 효과)
+                  longitude: c.longitude
+                }));
+
+                const fillColor = data.team === 'A' ? 'rgba(33, 150, 243, 0.9)' : 'rgba(255, 152, 0, 0.9)';
+                const strokeColor = data.team === 'A' ? '#1565C0' : '#E65100';
+
+                polygons.push(
+                  <Polygon
+                    key={`${h3Id}-main`}
+                    coordinates={floatedCoordinates}
+                    fillColor={fillColor}
+                    strokeColor={strokeColor}
+                    strokeWidth={2}
+                    zIndex={2}
+                  />
+                );
+              } else {
+                // 일반 상태 (Highligh 아님)
+                let fillColor = data.team === 'A' ? 'rgba(33, 150, 243, 0.3)' : 'rgba(255, 152, 0, 0.3)';
+                let strokeColor = data.team === 'A' ? '#1976D2' : '#F57C00';
+
+                if (isDimmed) {
+                  fillColor = data.team === 'A' ? 'rgba(33, 150, 243, 0.1)' : 'rgba(255, 152, 0, 0.1)';
+                  strokeColor = 'transparent';
+                }
+
+                polygons.push(
+                  <Polygon
+                    key={h3Id}
+                    coordinates={coordinates}
+                    fillColor={fillColor}
+                    strokeColor={strokeColor}
+                    strokeWidth={1}
+                    zIndex={1}
+                  />
+                );
+              }
+
+              return polygons;
             } catch (error) {
               console.error('🔴 헥사곤 렌더링 에러:', h3Id, error.message);
               return null;
@@ -604,61 +658,75 @@ export default function GamePlayScreen({ navigation, route }) {
             </View>
           )}
         </View>
-
-        {/* 헥사곤 카운터 + 출석 버튼 (왼쪽 하단) */}
-        <View style={styles.attendanceButtonContainer} pointerEvents="box-none">
-          {/* 헥사곤 개수 표시 (출석 버튼 위) */}
-          <View style={styles.hexCounterContainer}>
-            {/* A팀 (Blue) */}
-            <View style={styles.hexCounterItem}>
-              <Image source={hexagonBlue} style={styles.hexIcon} />
-              <Text style={styles.hexCountText}>
-                {Object.values(ownedHexes).filter(h => h.team === 'A').length}
-              </Text>
-            </View>
-            {/* B팀 (Orange) */}
-            <View style={styles.hexCounterItem}>
-              <Image source={hexagonOrange} style={styles.hexIcon} />
-              <Text style={styles.hexCountText}>
-                {Object.values(ownedHexes).filter(h => h.team === 'B').length}
-              </Text>
-            </View>
-          </View>
-
-          {/* 출석 버튼 + 연속 일수 (가로 배치) */}
-          <View style={styles.attendanceRow}>
-            <TouchableOpacity
-              style={[styles.attendanceButton, { backgroundColor: 'rgba(224, 255, 230, 0.8)' }]}
-              onPress={handleShowAttendance}
-              disabled={loading}
-            >
-              {/* 기본 텍스트 (출석) */}
-              <Text style={styles.attendanceButtonText}>출석</Text>
-
-              {/* 도장 (조건부 표시: 이미 출석했거나 방금 땅을 먹었을 때) */}
-              {(hasAcquiredHex || attendanceData?.attended_today) && (
-                <Image
-                  source={paintItemIcon}
-                  style={{
-                    width: 90,
-                    height: 90,
-                    resizeMode: 'contain',
-                    position: 'absolute', // 겹쳐서 표시
-                    opacity: 1
-                  }}
-                />
-              )}
-            </TouchableOpacity>
-
-            {/* 연속 출석일 라벨 (버튼 옆) */}
-            {attendanceData && (
-              <View style={styles.daysLabelContainer}>
-                <Text style={styles.daysLabelText}>연속 {displayDays}일차</Text>
-              </View>
-            )}
-          </View>
-        </View>
       </SafeAreaView>
+
+      {/* 헥사곤 카운터 + 출석 버튼 (왼쪽 하단) - SafeAreaView 바깥 */}
+      <View style={styles.attendanceButtonContainer}>
+        {/* 헥사곤 개수 표시 (출석 버튼 위) */}
+        <View style={styles.hexCounterContainer}>
+          {/* A팀 (Blue) */}
+          <TouchableOpacity
+            style={[
+              styles.hexCounterItem,
+              highlightedTeam === 'A' && styles.hexCounterItemHighlighted
+            ]}
+            onPress={() => handleTeamHighlight('A')}
+            activeOpacity={0.7}
+          >
+            <Image source={hexagonBlue} style={styles.hexIcon} />
+            <Text style={styles.hexCountText}>
+              {Object.values(ownedHexes).filter(h => h.team === 'A').length}
+            </Text>
+          </TouchableOpacity>
+          {/* B팀 (Orange) */}
+          <TouchableOpacity
+            style={[
+              styles.hexCounterItem,
+              highlightedTeam === 'B' && styles.hexCounterItemHighlighted
+            ]}
+            onPress={() => handleTeamHighlight('B')}
+            activeOpacity={0.7}
+          >
+            <Image source={hexagonOrange} style={styles.hexIcon} />
+            <Text style={styles.hexCountText}>
+              {Object.values(ownedHexes).filter(h => h.team === 'B').length}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* 출석 버튼 + 연속 일수 (가로 배치) */}
+        <View style={styles.attendanceRow}>
+          <TouchableOpacity
+            style={[styles.attendanceButton, { backgroundColor: 'rgba(224, 255, 230, 0.8)' }]}
+            onPress={handleShowAttendance}
+            disabled={loading}
+          >
+            {/* 기본 텍스트 (출석) */}
+            <Text style={styles.attendanceButtonText}>출석</Text>
+
+            {/* 도장 (조건부 표시: 이미 출석했거나 방금 땅을 먹었을 때) */}
+            {(hasAcquiredHex || attendanceData?.attended_today) && (
+              <Image
+                source={paintItemIcon}
+                style={{
+                  width: 90,
+                  height: 90,
+                  resizeMode: 'contain',
+                  position: 'absolute', // 겹쳐서 표시
+                  opacity: 1
+                }}
+              />
+            )}
+          </TouchableOpacity>
+
+          {/* 연속 출석일 라벨 (버튼 옆) */}
+          {attendanceData && (
+            <View style={styles.daysLabelContainer}>
+              <Text style={styles.daysLabelText}>연속 {displayDays}일차</Text>
+            </View>
+          )}
+        </View>
+      </View>
 
       {/* 출석 현황 모달 */}
       <Modal visible={showAttendance} transparent animationType="slide">
@@ -811,9 +879,10 @@ const styles = StyleSheet.create({
   },
   attendanceButtonContainer: {
     position: 'absolute',
-    bottom: 30,
+    bottom: 50, // 조금 더 위로 (터치 영역 확보)
     left: 10,
-    alignItems: 'flex-start', // 왼쪽 정렬
+    alignItems: 'flex-start',
+    zIndex: 9999, // 최상위 보장
   },
   hexCounterContainer: {
     flexDirection: 'row', // 아이콘들 가로 배치
@@ -828,6 +897,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 12,
     gap: 4,
+  },
+  hexCounterItemHighlighted: {
+    backgroundColor: 'rgba(255, 255, 255, 1)', // 완전 불투명
+    borderWidth: 2,
+    borderColor: '#4CAF50', // 초록 테두리
+    transform: [{ scale: 1.05 }], // 살짝 확대
   },
   hexIcon: {
     width: 20,
