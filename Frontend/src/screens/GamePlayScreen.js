@@ -128,8 +128,9 @@ export default function GamePlayScreen({ navigation, route }) {
     return () => clearInterval(interval);
   }, [aimingHexes]);
 
-  // 페인트볼 개수 (프론트 상태로 관리)
-  const [paintballCount, setPaintballCount] = useState(5); // 일반 페인트볼
+  // 페인트볼 개수 및 게이지 (프론트 상태로 관리)
+  const [paintballCount, setPaintballCount] = useState(5); // 일반 페인트볼 보유 개수
+  const [paintballGauge, setPaintballGauge] = useState(0); // 페인트볼 충전 게이지 (0-100)
   const [superPaintballCount, setSuperPaintballCount] = useState(2); // 슈퍼 페인트볼
 
   // 0. 헥사곤 그리드 초기화 (카이스트 지역 시뮬레이션)
@@ -175,9 +176,17 @@ export default function GamePlayScreen({ navigation, route }) {
         const currentHex = ownedHexes[currentH3Index];
 
         if (currentHex.team === myTeam) {
-          // [추가] 이미 내 팀 땅인 곳에 가면 게이지 +60
+          // [수정] 이미 내 팀 땅인 곳에 가면 게이지 +60 및 레벨업 로직
           console.log(`♻️ 내 팀 땅 재방문! 게이지 충전 (+60)`);
-          setPaintballCount(prev => Math.min(prev + 60, 100)); // 최대 100으로 설정
+
+          setPaintballGauge(prev => {
+            const nextGauge = prev + 60;
+            if (nextGauge >= 100) {
+              setPaintballCount(count => count + 1); // 개수 +1
+              return nextGauge - 100; // 100 제외한 나머지 값으로 리셋
+            }
+            return nextGauge;
+          });
         } else {
           // [기존] 내 팀 땅이 아니라면 점령
           console.log(`🚩 땅 점령! ${currentH3Index} : ${currentHex.team || 'None'} -> ${myTeam}`);
@@ -598,6 +607,10 @@ export default function GamePlayScreen({ navigation, route }) {
 
               console.log(`🎨 ${itemName} 사용! ${h3Id} 점령 완료 (팀: ${myTeam || 'A'})`);
 
+              // [추가] 땅을 획득했으므로 출석 버튼 도장 활성화
+              setHasAcquiredHex(true);
+              console.log('🔨 hasAcquiredHex 상태를 true로 설정 (아이템 사용)');
+
               // 시각적 정리: 조준 및 선택 효과 제거
               setSelectedHexId(null);
               setAimingHexes([]);
@@ -771,10 +784,10 @@ export default function GamePlayScreen({ navigation, route }) {
                   strokeColor = '#F57C00';
                   baseOpacity = isDimmed ? 0.1 : 0.3;
                 } else {
-                  // 미점령 (회색)
+                  // 미점령 (회색) - 더 투명하게
                   baseColor = '50, 50, 50';
                   strokeColor = '#444444';
-                  baseOpacity = isDimmed ? 0.3 : 0.5;
+                  baseOpacity = isDimmed ? 0.15 : 0.25;
                 }
 
                 const opacity = Math.min(baseOpacity + opacityBoost, 1.0);
@@ -935,7 +948,7 @@ export default function GamePlayScreen({ navigation, route }) {
 
         {/* 슈퍼 페인트볼 (위쪽에 배치) */}
         <TouchableOpacity
-          style={[styles.hexCounterItem, { alignSelf: 'flex-start', marginTop: 2, zIndex: 5, backgroundColor: aimingType === 'super' ? 'rgba(255, 64, 129, 0.9)' : 'rgba(200, 200, 200, 0.9)', padding: 10, borderRadius: 15 }]}
+          style={[styles.hexCounterItem, { alignSelf: 'flex-start', marginTop: 2, zIndex: 5, backgroundColor: aimingType === 'super' ? 'rgba(255, 64, 129, 0.9)' : 'rgba(200, 200, 200, 0.9)', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 12 }]}
           onPress={() => {
             setAimingHexes([]);
             setAimingType(null);
@@ -946,9 +959,9 @@ export default function GamePlayScreen({ navigation, route }) {
         >
           <Image
             source={paintItemIcon}
-            style={{ width: 72, height: 72, resizeMode: 'contain' }}
+            style={{ width: 60, height: 60, resizeMode: 'contain' }}
           />
-          <Text style={[styles.hexCountText, { color: '#FF4081', marginLeft: -4, marginRight: 10, fontSize: 32, fontWeight: 'bold' }]}>
+          <Text style={[styles.hexCountText, { color: '#FF4081', marginLeft: -2, marginRight: 8, fontSize: 26, fontWeight: 'bold' }]}>
             {superPaintballCount}
           </Text>
         </TouchableOpacity>
@@ -997,18 +1010,24 @@ export default function GamePlayScreen({ navigation, route }) {
             <Text style={styles.attendanceButtonText}>출석</Text>
 
             {/* 도장 (조건부 표시: 이미 출석했거나 방금 땅을 먹었을 때) */}
-            {(hasAcquiredHex || attendanceData?.attended_today) && (
-              <Image
-                source={paintItemIcon}
-                style={{
-                  width: 90,
-                  height: 90,
-                  resizeMode: 'contain',
-                  position: 'absolute', // 겹쳐서 표시
-                  opacity: 1
-                }}
-              />
-            )}
+            {(() => {
+              const shouldShowStamp = hasAcquiredHex || attendanceData?.attended_today;
+              console.log('🔍 도장 표시 조건:', { hasAcquiredHex, attended_today: attendanceData?.attended_today, shouldShowStamp });
+              return shouldShowStamp && (
+                <Image
+                  source={paintItemIcon}
+                  style={{
+                    width: 85,
+                    height: 85,
+                    resizeMode: 'contain',
+                    position: 'absolute',
+                    transform: [{ rotate: '-15deg' }], // 도장처럼 살짝 기울임
+                    tintColor: '#FF4081', // 슈퍼 페인트볼 색상 (핑크)
+                    opacity: 0.8,
+                  }}
+                />
+              );
+            })()}
           </TouchableOpacity>
 
           {/* 연속 출석일 라벨 (버튼 옆) */}
@@ -1033,10 +1052,10 @@ export default function GamePlayScreen({ navigation, route }) {
             style={[
               styles.cylinderFill,
               {
-                height: `${Math.min(paintballCount, 100)}%`,
+                height: `${Math.min(paintballGauge, 100)}%`,
                 backgroundColor: myTeam === 'B'
-                  ? `rgba(255, 152, 0, ${0.4 + (Math.min(paintballCount, 100) / 100) * 0.6})`
-                  : `rgba(33, 150, 243, ${0.4 + (Math.min(paintballCount, 100) / 100) * 0.6})`,
+                  ? `rgba(255, 152, 0, ${0.4 + (Math.min(paintballGauge, 100) / 100) * 0.6})`
+                  : `rgba(33, 150, 243, ${0.4 + (Math.min(paintballGauge, 100) / 100) * 0.6})`,
                 shadowColor: myTeam === 'B' ? '#FF9800' : '#2196F3',
               }
             ]}
@@ -1210,13 +1229,14 @@ const styles = StyleSheet.create({
   },
   attendanceButtonContainer: {
     position: 'absolute',
-    bottom: 50, // 조금 더 위로 (터치 영역 확보)
+    bottom: 33, // 조금 더 위로 (터치 영역 확보)
     left: 10,
     alignItems: 'flex-start',
     zIndex: 9999, // 최상위 보장
   },
   hexCounterContainer: {
     flexDirection: 'row', // 아이콘들 가로 배치
+    marginTop: 8, // 위쪽 요소(슈퍼 페인트볼)와의 간격 추가
     marginBottom: 8,
     gap: 12,
   },
@@ -1224,10 +1244,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    gap: 6,
   },
   hexCounterItemHighlighted: {
     backgroundColor: 'rgba(255, 255, 255, 1)', // 완전 불투명
@@ -1236,12 +1256,12 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.05 }], // 살짝 확대
   },
   hexIcon: {
-    width: 20,
-    height: 20,
+    width: 24,
+    height: 24,
     resizeMode: 'contain',
   },
   hexCountText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
   },
