@@ -12,7 +12,7 @@ import datetime
 
 from .models import GameArea, Room, Participant, RunningRecord
 from .serializers import (
-    GameAreaSerializer, GameAreaListSerializer,
+    GameAreaListSerializer,
     RoomListSerializer, RoomDetailSerializer, RoomCreateSerializer,
     ParticipantSerializer, RunningRecordSerializer,
     RunningRecordStartSerializer, RunningRecordStopSerializer,
@@ -43,7 +43,7 @@ class GameAreaDetailView(generics.RetrieveAPIView):
     """게임 구역 상세 조회"""
     permission_classes = [IsAuthenticated]
     queryset = GameArea.objects.filter(is_active=True)
-    serializer_class = GameAreaSerializer
+    serializer_class = GameAreaListSerializer
     lookup_field = 'id'
 
 
