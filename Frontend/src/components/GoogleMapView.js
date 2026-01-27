@@ -8,6 +8,7 @@ const GoogleMapView = forwardRef(({
     initialZoom = 16,
     onMapReady,
     onCameraChange,
+    children, // 자식 컴포넌트 추가
 }, ref) => {
     const mapRef = useRef(null);
 
@@ -75,7 +76,9 @@ const GoogleMapView = forwardRef(({
             onRegionChangeComplete={handleRegionChangeComplete}
             showsUserLocation={true}
             showsMyLocationButton={true}
-        />
+        >
+            {children}
+        </MapView>
     );
 });
 

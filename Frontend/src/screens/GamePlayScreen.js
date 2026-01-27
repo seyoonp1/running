@@ -14,9 +14,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import paintItemIcon from '../../assets/icons/paint item_icon.png';
+import hexagonBlue from '../../assets/icons/simple_hexagon.png';
+import hexagonOrange from '../../assets/icons/simple_hexagon_orange.png';
 import GoogleMapView from '../components/GoogleMapView';
+import { Marker, Polygon } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { cellToBoundary } from 'h3-js';
+import { cellToBoundary, latLngToCell, gridDisk, cellToLatLng } from 'h3-js';
 import { startRecord, stopRecord } from '../services/recordService';
 import { getAttendance } from '../services/roomService';
 import socketService from '../services/socketService';
@@ -25,6 +28,15 @@ import { calculateDistance, calculatePace, formatDistance, formatTime } from '..
 import { useAuth } from '../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
+
+// 게임 구역 설정: 카이스트 본원
+const KAIST_CONFIG = {
+  name: '카이스트 본원',
+  city: '대전광역시',
+  center: { latitude: 36.3721, longitude: 127.3604 },
+  h3Resolution: 9, // H3 해상도 (약 170m 반경)
+  gridRadius: 10,  // 중심으로부터의 반지름 (헥사곤 개수 단위)
+};
 
 // H3 ID를 좌표 배열로 변환하는 함수
 const h3ToCoordinates = (h3Id) => {
@@ -88,6 +100,35 @@ export default function GamePlayScreen({ navigation, route }) {
   const [attendanceData, setAttendanceData] = useState(null);
   const [hasAcquiredHex, setHasAcquiredHex] = useState(false); // 땅 획득 여부 (도장용)
 
+  // 0. 헥사곤 그리드 초기화 (카이스트 지역 시뮬레이션)
+  const initHexGrid = () => {
+    console.log('🔷 initHexGrid 시작...');
+
+    const centerH3 = latLngToCell(
+      KAIST_CONFIG.center.latitude,
+      KAIST_CONFIG.center.longitude,
+      KAIST_CONFIG.h3Resolution
+    );
+    console.log('🔷 중심 H3 ID:', centerH3);
+
+    // 중심 주변 헥사곤 ID 리스트 생성
+    const hexIds = gridDisk(centerH3, KAIST_CONFIG.gridRadius);
+    console.log('🔷 생성된 헥사곤 개수:', hexIds.length);
+
+    const initialHexes = {};
+    hexIds.forEach((h3Id, index) => {
+      // 랜덤하게 팀 배정 (A: 파랑, B: 주황)
+      const team = Math.random() > 0.5 ? 'A' : 'B';
+      initialHexes[h3Id] = {
+        team: team,
+        ownerId: team === 'A' ? 'system-a' : 'system-b'
+      };
+    });
+
+    console.log('🔷 ownedHexes 설정 완료. 샘플:', Object.keys(initialHexes).slice(0, 3));
+    setOwnedHexes(initialHexes);
+  };
+
   // 1. 초기 설정 및 소켓 연결
   useEffect(() => {
     let mounted = true;
@@ -115,7 +156,9 @@ export default function GamePlayScreen({ navigation, route }) {
       }
     };
 
-    initGame();
+    initGame().then(() => {
+      initHexGrid(); // 카이스트 그리드 생성
+    });
 
     // 초기 출석 상태 확인 (조용히)
     const checkInitialAttendance = async () => {
@@ -445,14 +488,52 @@ export default function GamePlayScreen({ navigation, route }) {
         <GoogleMapView
           ref={mapRef}
           style={styles.map}
-          initialCenter={{
-            latitude: location.latitude,
-            longitude: location.longitude,
-          }}
+          initialCenter={KAIST_CONFIG.center}
           initialZoom={16}
           onMapReady={handleMapReady}
           onCameraChange={handleCameraChange}
-        />
+        >
+          {/* 테스트 마커 - 카이스트 중심 */}
+          <Marker
+            coordinate={KAIST_CONFIG.center}
+            title="카이스트 중심"
+          >
+            <View style={{ backgroundColor: 'red', padding: 10, borderRadius: 20 }}>
+              <Text style={{ color: 'white', fontWeight: 'bold' }}>TEST</Text>
+            </View>
+          </Marker>
+
+          {/* 헥사곤 점령 영역 표시 (Polygon 방식 - 정확한 경계) */}
+          {Object.entries(ownedHexes).map(([h3Id, data]) => {
+            try {
+              const boundary = cellToBoundary(h3Id); // H3 경계 좌표
+              const coordinates = boundary.map(([lat, lng]) => ({
+                latitude: lat,
+                longitude: lng,
+              }));
+
+              const fillColor = data.team === 'A'
+                ? 'rgba(33, 150, 243, 0.3)' // 파랑 반투명 (투명도 조절)
+                : 'rgba(255, 152, 0, 0.3)'; // 주황 반투명 (투명도 조절)
+              const strokeColor = data.team === 'A'
+                ? '#1976D2' // 파랑 테두리
+                : '#F57C00'; // 주황 테두리
+
+              return (
+                <Polygon
+                  key={h3Id}
+                  coordinates={coordinates}
+                  fillColor={fillColor}
+                  strokeColor={strokeColor}
+                  strokeWidth={1}
+                />
+              );
+            } catch (error) {
+              console.error('🔴 헥사곤 렌더링 에러:', h3Id, error.message);
+              return null;
+            }
+          })}
+        </GoogleMapView>
       </View>
 
       <SafeAreaView style={[styles.overlayContainer, { backgroundColor: 'transparent' }]} pointerEvents="box-none">
@@ -524,37 +605,58 @@ export default function GamePlayScreen({ navigation, route }) {
           )}
         </View>
 
-        {/* 출석 버튼 (왼쪽 하단) */}
+        {/* 헥사곤 카운터 + 출석 버튼 (왼쪽 하단) */}
         <View style={styles.attendanceButtonContainer} pointerEvents="box-none">
-          <TouchableOpacity
-            style={[styles.attendanceButton, { backgroundColor: 'rgba(224, 255, 230, 0.8)' }]}
-            onPress={handleShowAttendance}
-            disabled={loading}
-          >
-            {/* 기본 텍스트 (출석) */}
-            <Text style={styles.attendanceButtonText}>출석</Text>
-
-            {/* 도장 (조건부 표시: 이미 출석했거나 방금 땅을 먹었을 때) */}
-            {(hasAcquiredHex || attendanceData?.attended_today) && (
-              <Image
-                source={paintItemIcon}
-                style={{
-                  width: 90,
-                  height: 90,
-                  resizeMode: 'contain',
-                  position: 'absolute', // 겹쳐서 표시
-                  opacity: 1
-                }}
-              />
-            )}
-          </TouchableOpacity>
-
-          {/* 연속 출석일 라벨 (버튼 옆) */}
-          {attendanceData && (
-            <View style={styles.daysLabelContainer}>
-              <Text style={styles.daysLabelText}>연속 {displayDays}일차</Text>
+          {/* 헥사곤 개수 표시 (출석 버튼 위) */}
+          <View style={styles.hexCounterContainer}>
+            {/* A팀 (Blue) */}
+            <View style={styles.hexCounterItem}>
+              <Image source={hexagonBlue} style={styles.hexIcon} />
+              <Text style={styles.hexCountText}>
+                {Object.values(ownedHexes).filter(h => h.team === 'A').length}
+              </Text>
             </View>
-          )}
+            {/* B팀 (Orange) */}
+            <View style={styles.hexCounterItem}>
+              <Image source={hexagonOrange} style={styles.hexIcon} />
+              <Text style={styles.hexCountText}>
+                {Object.values(ownedHexes).filter(h => h.team === 'B').length}
+              </Text>
+            </View>
+          </View>
+
+          {/* 출석 버튼 + 연속 일수 (가로 배치) */}
+          <View style={styles.attendanceRow}>
+            <TouchableOpacity
+              style={[styles.attendanceButton, { backgroundColor: 'rgba(224, 255, 230, 0.8)' }]}
+              onPress={handleShowAttendance}
+              disabled={loading}
+            >
+              {/* 기본 텍스트 (출석) */}
+              <Text style={styles.attendanceButtonText}>출석</Text>
+
+              {/* 도장 (조건부 표시: 이미 출석했거나 방금 땅을 먹었을 때) */}
+              {(hasAcquiredHex || attendanceData?.attended_today) && (
+                <Image
+                  source={paintItemIcon}
+                  style={{
+                    width: 90,
+                    height: 90,
+                    resizeMode: 'contain',
+                    position: 'absolute', // 겹쳐서 표시
+                    opacity: 1
+                  }}
+                />
+              )}
+            </TouchableOpacity>
+
+            {/* 연속 출석일 라벨 (버튼 옆) */}
+            {attendanceData && (
+              <View style={styles.daysLabelContainer}>
+                <Text style={styles.daysLabelText}>연속 {displayDays}일차</Text>
+              </View>
+            )}
+          </View>
         </View>
       </SafeAreaView>
 
@@ -711,8 +813,31 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 30,
     left: 10,
-    flexDirection: 'row', // 가로 배치
-    alignItems: 'center', // 수직 중앙 정렬
+    alignItems: 'flex-start', // 왼쪽 정렬
+  },
+  hexCounterContainer: {
+    flexDirection: 'row', // 아이콘들 가로 배치
+    marginBottom: 8,
+    gap: 12,
+  },
+  hexCounterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    gap: 4,
+  },
+  hexIcon: {
+    width: 20,
+    height: 20,
+    resizeMode: 'contain',
+  },
+  hexCountText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
   },
   daysLabelContainer: {
     marginLeft: 10,
@@ -725,6 +850,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  attendanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   attendanceButton: {
     width: 70,
