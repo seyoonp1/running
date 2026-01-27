@@ -6,19 +6,11 @@ from .models import GameArea, Room, Participant, RunningRecord
 from apps.accounts.serializers import UserSerializer
 
 
-class GameAreaSerializer(serializers.ModelSerializer):
-    """게임 구역 Serializer"""
-    class Meta:
-        model = GameArea
-        fields = ['id', 'name', 'city', 'description', 'bounds', 'h3_resolution', 'is_active']
-        read_only_fields = ['id']
-
-
 class GameAreaListSerializer(serializers.ModelSerializer):
     """게임 구역 목록용 간략 Serializer"""
     class Meta:
         model = GameArea
-        fields = ['id', 'name', 'city', 'description', 'h3_resolution', 'is_active']
+        fields = ['id', 'name', 'city', 'description', 'bounds', 'h3_resolution', 'is_active']
 
 
 class ParticipantSerializer(serializers.ModelSerializer):
@@ -54,7 +46,7 @@ class RoomListSerializer(serializers.ModelSerializer):
 class RoomDetailSerializer(serializers.ModelSerializer):
     """방 상세 Serializer"""
     creator = UserSerializer(read_only=True)
-    game_area = GameAreaSerializer(read_only=True)
+    game_area = GameAreaListSerializer(read_only=True)
     participants = ParticipantSerializer(many=True, read_only=True)
     current_participants = serializers.SerializerMethodField()
     team_a_count = serializers.SerializerMethodField()

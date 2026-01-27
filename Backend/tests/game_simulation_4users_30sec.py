@@ -41,6 +41,37 @@ GPS_UPDATE_INTERVAL = 1.0  # 1초마다 GPS 업데이트
 SPEED_MPS = 3.0  # 초당 3미터 (약 10.8 km/h)
 
 
+def get_bounds_center(bounds: Dict) -> Optional[tuple]:
+    """게임 구역 bounds의 중심 좌표 (lat, lng) 계산"""
+    if not bounds:
+        return None
+
+    coords = None
+    if isinstance(bounds, dict):
+        if bounds.get("type") == "Polygon":
+            coords = bounds.get("coordinates")
+        else:
+            coords = bounds.get("coordinates")
+
+    if not coords or not coords[0]:
+        return None
+
+    ring = coords[0]
+    lat_sum = 0.0
+    lng_sum = 0.0
+    count = 0
+    for point in ring:
+        if isinstance(point, list) and len(point) >= 2:
+            lng_sum += point[0]
+            lat_sum += point[1]
+            count += 1
+
+    if count == 0:
+        return None
+
+    return (lat_sum / count, lng_sum / count)
+
+
 async def wait_for_ws_type(ws, expected_type: str, timeout: float = 5.0):
     """WebSocket에서 특정 타입 메시지를 받을 때까지 대기"""
     end_time = time.time() + timeout
@@ -382,6 +413,14 @@ async def test_game_simulation_30sec():
 
     game_area_id = results[0]["id"]
     print(f"✅ 게임 구역 선택: {results[0]['name']}")
+    selected_bounds = results[0]['bounds']['coordinates']
+    center = get_bounds_center(selected_bounds)
+    if center:
+        base_lat, base_lng = center
+        print(f"✅ 게임 구역 중심 좌표 사용: {base_lat:.6f}, {base_lng:.6f}")
+    else:
+        base_lat, base_lng = 37.5665, 126.9780  # 서울 시청 근처
+        print("⚠️ 게임 구역 bounds 없음: 기본 좌표(서울) 사용")
 
     # 5. 방 생성 (start_date는 현재 시간으로 설정)
     print("\n📌 Step 5: 방 생성")
@@ -465,8 +504,6 @@ async def test_game_simulation_30sec():
     print(f"   이동 속도: {SPEED_MPS} m/s (약 {SPEED_MPS * 3.6:.1f} km/h)")
     
     # 각 사용자의 시작 위치 (약간씩 다르게)
-    base_lat = 37.5665  # 서울 시청 근처
-    base_lng = 126.9780
     start_positions = [
         (base_lat, base_lng),  # user1
         (base_lat + 0.0001, base_lng),  # user2
