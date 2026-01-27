@@ -120,17 +120,45 @@ export default function GamePlayScreen({ navigation, route }) {
 
     const initialHexes = {};
     hexIds.forEach((h3Id, index) => {
-      // 랜덤하게 팀 배정 (A: 파랑, B: 주황)
-      const team = Math.random() > 0.5 ? 'A' : 'B';
+      // 초기 상태: 모두 미점령 (Neutral)
       initialHexes[h3Id] = {
-        team: team,
-        ownerId: team === 'A' ? 'system-a' : 'system-b'
+        team: null, // 주인이 없음
+        ownerId: null
       };
     });
 
     console.log('🔷 ownedHexes 설정 완료. 샘플:', Object.keys(initialHexes).slice(0, 3));
     setOwnedHexes(initialHexes);
   };
+
+  // 영역 점령 로직 (위치 이동 시 트리거)
+  useEffect(() => {
+    if (!location || !myTeam || Object.keys(ownedHexes).length === 0) return;
+
+    const currentH3Index = latLngToCell(location.latitude, location.longitude, KAIST_CONFIG.h3Resolution);
+
+    // 현재 위치가 게임 그리드 안에 있고, 내 팀 땅이 아니라면 점령
+    if (ownedHexes[currentH3Index]) {
+      const currentHex = ownedHexes[currentH3Index];
+      if (currentHex.team !== myTeam) {
+        console.log(`🚩 땅 점령! ${currentH3Index} : ${currentHex.team || 'None'} -> ${myTeam}`);
+
+        setOwnedHexes(prev => ({
+          ...prev,
+          [currentH3Index]: {
+            ...prev[currentH3Index],
+            team: myTeam, // 내 팀으로 변경
+            ownerId: user?.id || 'me'
+          }
+        }));
+
+        setHasAcquiredHex(true); // 도장 쾅!
+
+        // 소켓으로 점령 정보 전송 (구현 시)
+        // socketService.sendHexClaim(...)
+      }
+    }
+  }, [location, myTeam]); // location이나 myTeam이 바뀌면 체크
 
   // 1. 초기 설정 및 소켓 연결
   useEffect(() => {
@@ -150,6 +178,8 @@ export default function GamePlayScreen({ navigation, route }) {
       console.log('현재 위치:', currentLocation.coords);
       if (mounted) {
         setLocation(currentLocation.coords);
+        // 테스트용: 내 팀을 A팀으로 설정
+        setMyTeam('A');
       }
 
       // 소켓 연결
@@ -212,42 +242,6 @@ export default function GamePlayScreen({ navigation, route }) {
       mapRef.current.drawPolyline(routeCoordinates, '#003D7A', 4);
     }
   }, [mapReady, routeCoordinates]);
-
-  // 폴리곤 업데이트 (헥사곤 영역)
-  useEffect(() => {
-    if (mapReady && mapRef.current) {
-      const polygonData = Object.entries(ownedHexes).map(([h3Id, data]) => {
-        const coords = h3ToCoordinates(h3Id);
-        const isTeamA = data.team === 'A';
-        return {
-          coords,
-          fillColor: isTeamA ? 'rgba(0, 61, 122, 0.4)' : 'rgba(255, 107, 53, 0.4)',
-          strokeColor: isTeamA ? '#003D7A' : '#FF6B35',
-        };
-      }).filter(p => p.coords.length > 0);
-
-      if (polygonData.length > 0) {
-        mapRef.current.drawPolygons(polygonData);
-      }
-    }
-  }, [mapReady, ownedHexes]);
-
-  // 마커 업데이트 (다른 참가자)
-  useEffect(() => {
-    if (mapReady && mapRef.current) {
-      const markerData = Object.entries(otherParticipants).map(([userId, p]) => ({
-        latitude: p.lat,
-        longitude: p.lng,
-        caption: `Team ${p.team}`,
-        color: p.team === 'A' ? '#003D7A' : '#FF6B35',
-        captionColor: p.team === 'A' ? '#003D7A' : '#FF6B35',
-      }));
-
-      if (markerData.length > 0) {
-        mapRef.current.drawMarkers(markerData);
-      }
-    }
-  }, [mapReady, otherParticipants]);
 
   // 소켓 리스너 설정
   const setupSocketListeners = () => {
@@ -561,17 +555,36 @@ export default function GamePlayScreen({ navigation, route }) {
                 );
               } else {
                 // 일반 상태 (Highligh 아님)
-                let fillColor = data.team === 'A' ? 'rgba(33, 150, 243, 0.3)' : 'rgba(255, 152, 0, 0.3)';
-                let strokeColor = data.team === 'A' ? '#1976D2' : '#F57C00';
+                let fillColor, strokeColor;
+
+                if (data.team === 'A') {
+                  fillColor = 'rgba(33, 150, 243, 0.3)';
+                  strokeColor = '#1976D2';
+                } else if (data.team === 'B') {
+                  fillColor = 'rgba(255, 152, 0, 0.3)';
+                  strokeColor = '#F57C00';
+                } else {
+                  // 미점령 (회색) - 진한 회색 (최종 적용)
+                  fillColor = 'rgba(50, 50, 50, 0.8)';
+                  strokeColor = '#444444';
+                }
 
                 if (isDimmed) {
-                  fillColor = data.team === 'A' ? 'rgba(33, 150, 243, 0.1)' : 'rgba(255, 152, 0, 0.1)';
+                  // 흐리게 (미점령 구역은 여전히 진한 회색 유지)
+                  if (data.team === 'A') {
+                    fillColor = 'rgba(33, 150, 243, 0.1)';
+                  } else if (data.team === 'B') {
+                    fillColor = 'rgba(255, 152, 0, 0.1)';
+                  } else {
+                    // 미점령은 진한 회색 유지 (안개 효과)
+                    fillColor = 'rgba(50, 50, 50, 0.6)';
+                  }
                   strokeColor = 'transparent';
                 }
 
                 polygons.push(
                   <Polygon
-                    key={h3Id}
+                    key={`${h3Id}-${fillColor}`}
                     coordinates={coordinates}
                     fillColor={fillColor}
                     strokeColor={strokeColor}
@@ -579,6 +592,9 @@ export default function GamePlayScreen({ navigation, route }) {
                     zIndex={1}
                   />
                 );
+
+
+
               }
 
               return polygons;
