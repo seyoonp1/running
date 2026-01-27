@@ -219,13 +219,25 @@ class RoomConsumer(AsyncWebsocketConsumer):
     
     async def process_claim(self, h3_id, participant, room):
         """점령 처리"""
+        logger.debug(
+            "process_claim called: participant=%s h3_id=%s",
+            self.participant_id,
+            h3_id,
+        )
+        
         # 게임 영역 검증: 영역 밖 hex는 점령 불가
         game_area_bounds = room.game_area.bounds if room.game_area else None
         
         # H3 hex의 중심 좌표 확인
         try:
             hex_lat, hex_lng = h3_to_latlng(h3_id)
-        except Exception:
+        except Exception as e:
+            logger.error(
+                "Failed to get hex center: participant=%s h3_id=%s error=%s",
+                self.participant_id,
+                h3_id,
+                str(e),
+            )
             hex_lat, hex_lng = None, None
         
         if not is_h3_in_bounds(h3_id, game_area_bounds):
@@ -246,6 +258,14 @@ class RoomConsumer(AsyncWebsocketConsumer):
         current_ownerships = room.current_hex_ownerships or {}
         existing = current_ownerships.get(h3_id)
         
+        logger.debug(
+            "Claim processing: participant=%s h3_id=%s team=%s existing=%s",
+            self.participant_id,
+            h3_id,
+            team,
+            existing,
+        )
+        
         gauge_to_add = 0
         claimed = False
         
@@ -253,6 +273,12 @@ class RoomConsumer(AsyncWebsocketConsumer):
             if existing.get('team') == team:
                 # 같은 팀의 땅 → +60 게이지
                 gauge_to_add = 60
+                logger.debug(
+                    "Claim ignored (same team): participant=%s h3_id=%s team=%s",
+                    self.participant_id,
+                    h3_id,
+                    team,
+                )
             else:
                 # 상대 팀 땅 점령
                 current_ownerships[h3_id] = {
@@ -276,6 +302,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
         
         # 점령 저장
         if claimed:
+            logger.info(
+                "Claim success: participant=%s h3_id=%s team=%s user_id=%s",
+                self.participant_id,
+                h3_id,
+                team,
+                user_id,
+            )
             await self.save_hex_ownerships(room, current_ownerships)
             
             # 출석 체크 (다른 hex로 이동)
