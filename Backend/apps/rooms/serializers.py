@@ -155,9 +155,11 @@ class RunningRecordStartSerializer(serializers.Serializer):
 
 
 class RunningRecordStopSerializer(serializers.Serializer):
-    """러닝 기록 종료 Serializer"""
-    duration_seconds = serializers.IntegerField(min_value=0)
-    distance_meters = serializers.FloatField(min_value=0)
+    """러닝 기록 종료 Serializer (선택적 필드 - 백엔드에서 계산)"""
+    # 모든 필드는 선택적: 백엔드에서 자동 계산
+    # 프론트엔드에서 제공하면 해당 값 사용, 없으면 백엔드 계산값 사용
+    duration_seconds = serializers.IntegerField(min_value=0, required=False)
+    distance_meters = serializers.FloatField(min_value=0, required=False)
 
 
 class RunningStatsSerializer(serializers.Serializer):

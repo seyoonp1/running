@@ -539,6 +539,11 @@ def stop_record(request, id):
     """
     15. 기록 종료
     POST /api/records/{id}/stop/
+    
+    ⚠️ 거리/시간은 백엔드에서 계산
+    - duration_seconds: started_at ~ ended_at 차이로 계산
+    - distance_meters: WebSocket GPS 데이터로 누적 계산 (Haversine 공식)
+    - 프론트엔드는 Request body 없이 호출 가능
     """
     try:
         record = RunningRecord.objects.get(id=id, user=request.user)
@@ -550,13 +555,17 @@ def stop_record(request, id):
         return Response({'error': 'ALREADY_STOPPED', 'message': '이미 종료된 기록입니다.'}, 
                        status=status.HTTP_400_BAD_REQUEST)
     
-    serializer = RunningRecordStopSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    
-    # 기록 업데이트
-    record.duration_seconds = serializer.validated_data['duration_seconds']
-    record.distance_meters = serializer.validated_data['distance_meters']
+    # 기록 종료 시간 설정
     record.ended_at = timezone.now()
+    
+    # 백엔드에서 duration_seconds 계산 (started_at ~ ended_at)
+    record.duration_seconds = int((record.ended_at - record.started_at).total_seconds())
+    
+    # distance_meters는 WebSocket 위치 데이터에서 이미 누적됨
+    # (RoomConsumer의 location_update에서 계산)
+    # 만약 WebSocket에서 계산되지 않았다면 0으로 유지
+    
+    # 평균 페이스 계산
     record.calculate_pace()
     record.save()
     
