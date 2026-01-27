@@ -41,6 +41,23 @@ GPS_UPDATE_INTERVAL = 1.0  # 1초마다 GPS 업데이트
 SPEED_MPS = 3.0  # 초당 3미터 (약 10.8 km/h)
 
 
+async def wait_for_ws_type(ws, expected_type: str, timeout: float = 5.0):
+    """WebSocket에서 특정 타입 메시지를 받을 때까지 대기"""
+    end_time = time.time() + timeout
+    while time.time() < end_time:
+        try:
+            remaining = max(0.1, end_time - time.time())
+            msg = await asyncio.wait_for(ws.recv(), timeout=remaining)
+            data = json.loads(msg)
+            if data.get("type") == expected_type:
+                return data
+        except asyncio.TimeoutError:
+            break
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
 class TestUser:
     """테스트 사용자 클래스"""
 
@@ -256,29 +273,15 @@ async def simulate_user_movement(ws, user: TestUser, room_id: str, start_lat: fl
     
     print(f"🏃 {user.username} GPS 이동 시작 ({len(route)}개 포인트)")
     
-    # 기록 시작 (API로 먼저 시작)
-    response = requests.post(
-        f"{BASE_URL}/api/records/start/",
-        headers=user.get_headers(),
-        json={"room_id": room_id},
-    )
-    if response.status_code in [200, 201]:
-        data = response.json()
-        user.record_id = data.get("id")
+    # WebSocket으로 start_recording 메시지 전송 (거리 계산 변수 초기화 + 기록 생성)
+    await ws.send(json.dumps({"type": "start_recording"}))
+    ws_data = await wait_for_ws_type(ws, "recording_started", timeout=5)
+    if ws_data:
+        user.record_id = ws_data.get("record_id")
         print(f"✅ {user.username} 기록 시작 (Record ID: {user.record_id})")
     else:
-        print(f"❌ {user.username} 기록 시작 실패: {response.text}")
+        print(f"❌ {user.username} 기록 시작 응답 타임아웃")
         return
-    
-    # WebSocket으로 start_recording 메시지 전송 (거리 계산 변수 초기화)
-    await ws.send(json.dumps({"type": "start_recording"}))
-    try:
-        response_msg = await asyncio.wait_for(ws.recv(), timeout=3)
-        ws_data = json.loads(response_msg)
-        if ws_data.get("type") == "recording_started":
-            print(f"   WebSocket 기록 시작 확인")
-    except asyncio.TimeoutError:
-        print(f"⚠️ {user.username} WebSocket 기록 시작 응답 타임아웃 (계속 진행)")
     
     # WebSocket으로 위치 업데이트 전송
     start_time = time.time()
@@ -304,39 +307,19 @@ async def simulate_user_movement(ws, user: TestUser, room_id: str, start_lat: fl
         if i < len(route) - 1:
             await asyncio.sleep(GPS_UPDATE_INTERVAL)
     
-    # 기록 종료 (WebSocket으로 먼저 전송하여 거리 계산)
+    # 기록 종료 (WebSocket으로 거리 계산 및 저장)
     if user.record_id:
         # WebSocket으로 stop_recording 메시지 전송 (거리 계산 및 저장)
         await ws.send(json.dumps({"type": "stop_recording"}))
-        
-        # WebSocket 응답 대기 (거리 계산 완료 대기)
-        try:
-            response_msg = await asyncio.wait_for(ws.recv(), timeout=5)
-            ws_data = json.loads(response_msg)
-            if ws_data.get("type") == "recording_stopped":
-                ws_distance = ws_data.get("distance_meters", 0)
-                ws_duration = ws_data.get("duration_seconds", 0)
-                print(
-                    f"✅ {user.username} 기록 종료 (WebSocket): {ws_duration}초, {ws_distance:.2f}m"
-                )
-        except asyncio.TimeoutError:
-            print(f"⚠️ {user.username} WebSocket 응답 타임아웃 (거리 계산은 완료되었을 수 있음)")
-        
-        # API로도 기록 종료 확인 (이미 WebSocket에서 처리되었지만 확인용)
-        response = requests.post(
-            f"{BASE_URL}/api/records/{user.record_id}/stop/",
-            headers=user.get_headers(),
-            json={},  # 빈 body
-        )
-        if response.status_code == 200:
-            data = response.json()
-            duration = data.get("duration_seconds", 0)
-            distance = data.get("distance_meters", 0)
+        ws_data = await wait_for_ws_type(ws, "recording_stopped", timeout=5)
+        if ws_data:
+            ws_distance = ws_data.get("distance_meters", 0)
+            ws_duration = ws_data.get("duration_seconds", 0)
             print(
-                f"   API 확인: {duration}초, {distance:.2f}m"
+                f"✅ {user.username} 기록 종료 (WebSocket): {ws_duration}초, {ws_distance:.2f}m"
             )
         else:
-            print(f"⚠️ {user.username} API 기록 종료 확인 실패: {response.text}")
+            print(f"⚠️ {user.username} WebSocket 응답 타임아웃 (거리 계산은 완료되었을 수 있음)")
 
 
 async def test_game_simulation_30sec():
@@ -550,13 +533,15 @@ async def test_game_simulation_30sec():
         participants = room_detail.get("participants", [])
         print("\n   참가자 결과:")
         for p in participants:
-            # user_id를 문자열로 변환하여 비교
-            p_user_id = str(p.get("user_id", ""))
-            username = None
-            for u in users:
-                if str(u.user_id) == p_user_id:
-                    username = u.username
-                    break
+            # ParticipantSerializer는 user 객체를 포함 (user.id, user.username)
+            p_user = p.get("user") or {}
+            p_user_id = str(p_user.get("id", ""))
+            username = p_user.get("username")
+            if not username:
+                for u in users:
+                    if str(u.user_id) == p_user_id:
+                        username = u.username
+                        break
             if not username:
                 username = f"User({p_user_id[:8]}...)" if p_user_id else "Unknown"
             print(f"   - {username}:")
