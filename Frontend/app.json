@@ -13,7 +13,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.running.app",
+      "bundleIdentifier": "com.delaykimm.splatrun", // "com.running.app"
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
@@ -24,7 +24,7 @@
       }
     },
     "android": {
-      "package": "com.running.app",
+      "package": "com.delaykimm.splatrun", // "com.running.app",
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyBkU-bc6EHGYJuJvP-etBHo38dvPTFMX_M"
