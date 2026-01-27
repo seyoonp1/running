@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
-import MapView, { Polyline, Polygon, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import GoogleMapView from '../components/GoogleMapView';
 import * as Location from 'expo-location';
 import { cellToBoundary } from 'h3-js';
 import { startRecord, stopRecord } from '../services/recordService';
@@ -40,9 +40,13 @@ export default function GamePlayScreen({ navigation, route }) {
   const [currentRecordId, setCurrentRecordId] = useState(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
-  // 위치 및 경로 상태
-  const [location, setLocation] = useState(null);
+  // 위치 및 경로 상태 (테스트를 위해 서울시청 기본값 설정)
+  const [location, setLocation] = useState({
+    latitude: 37.5665,
+    longitude: 126.9780,
+  });
   const [routeCoordinates, setRouteCoordinates] = useState([]);
   const [subscription, setSubscription] = useState(null);
 
@@ -99,6 +103,57 @@ export default function GamePlayScreen({ navigation, route }) {
     };
   }, [isRecording, isPaused]);
 
+  // 3. 맵 업데이트 (위치, 경로, 폴리곤, 마커)
+  useEffect(() => {
+    if (mapReady && mapRef.current && location) {
+      // 내 위치 업데이트
+      mapRef.current.updateMyLocation(location.latitude, location.longitude);
+    }
+  }, [mapReady, location]);
+
+  // 경로 업데이트
+  useEffect(() => {
+    if (mapReady && mapRef.current && routeCoordinates.length > 1) {
+      mapRef.current.drawPolyline(routeCoordinates, '#003D7A', 4);
+    }
+  }, [mapReady, routeCoordinates]);
+
+  // 폴리곤 업데이트 (헥사곤 영역)
+  useEffect(() => {
+    if (mapReady && mapRef.current) {
+      const polygonData = Object.entries(ownedHexes).map(([h3Id, data]) => {
+        const coords = h3ToCoordinates(h3Id);
+        const isTeamA = data.team === 'A';
+        return {
+          coords,
+          fillColor: isTeamA ? 'rgba(0, 61, 122, 0.4)' : 'rgba(255, 107, 53, 0.4)',
+          strokeColor: isTeamA ? '#003D7A' : '#FF6B35',
+        };
+      }).filter(p => p.coords.length > 0);
+
+      if (polygonData.length > 0) {
+        mapRef.current.drawPolygons(polygonData);
+      }
+    }
+  }, [mapReady, ownedHexes]);
+
+  // 마커 업데이트 (다른 참가자)
+  useEffect(() => {
+    if (mapReady && mapRef.current) {
+      const markerData = Object.entries(otherParticipants).map(([userId, p]) => ({
+        latitude: p.lat,
+        longitude: p.lng,
+        caption: `Team ${p.team}`,
+        color: p.team === 'A' ? '#003D7A' : '#FF6B35',
+        captionColor: p.team === 'A' ? '#003D7A' : '#FF6B35',
+      }));
+
+      if (markerData.length > 0) {
+        mapRef.current.drawMarkers(markerData);
+      }
+    }
+  }, [mapReady, otherParticipants]);
+
   // 소켓 리스너 설정
   const setupSocketListeners = () => {
     // 헥사곤 점령 알림
@@ -136,7 +191,7 @@ export default function GamePlayScreen({ navigation, route }) {
     }
   };
 
-  // 3. 기록 시작 핸들러
+  // 기록 시작 핸들러
   const handleStartRecord = async () => {
     try {
       setLoading(true);
@@ -176,7 +231,7 @@ export default function GamePlayScreen({ navigation, route }) {
     }
   };
 
-  // 4. 일시중단 핸들러 (팝업 없이 즉시 실행)
+  // 일시중단 핸들러 (팝업 없이 즉시 실행)
   const handlePauseRecord = () => {
     if (subscription) {
       subscription.remove();
@@ -185,7 +240,7 @@ export default function GamePlayScreen({ navigation, route }) {
     setIsPaused(true);
   };
 
-  // 5. 재개 핸들러
+  // 재개 핸들러
   const handleResumeRecord = async () => {
     try {
       // 위치 추적 재시작
@@ -211,7 +266,7 @@ export default function GamePlayScreen({ navigation, route }) {
     }
   };
 
-  // 6. 완전종료 핸들러 (확인 팝업 표시)
+  // 완전종료 핸들러 (확인 팝업 표시)
   const handleCompleteStop = () => {
     Alert.alert('확인', '기록을 완전히 종료하고 메인 화면으로 돌아가시겠습니까?', [
       { text: '취소', style: 'cancel' },
@@ -267,141 +322,107 @@ export default function GamePlayScreen({ navigation, route }) {
     return `${minutes}'${String(seconds).padStart(2, '0')}"`;
   };
 
+  // 지도 준비 완료 핸들러
+  const handleMapReady = () => {
+    setMapReady(true);
+    console.log('Google Maps 준비 완료');
+  };
+
+  // 카메라 변경 핸들러
+  const handleCameraChange = (e) => {
+    // 필요 시 카메라 변경 이벤트 처리
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      {/* 지도 영역 */}
+    <View style={styles.container}>
+      {/* 지도 영역 (전체 배경) */}
       <View style={styles.mapContainer}>
-        {location ? (
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            provider={PROVIDER_GOOGLE}
-            initialRegion={{
-              latitude: location.latitude,
-              longitude: location.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-            showsUserLocation={true}
-            followsUserLocation={true}
-          >
-            {/* 내 이동 경로 */}
-            <Polyline
-              coordinates={routeCoordinates}
-              strokeColor="#003D7A"
-              strokeWidth={4}
-            />
+        <GoogleMapView
+          ref={mapRef}
+          style={styles.map}
+          initialCenter={{
+            latitude: location.latitude,
+            longitude: location.longitude,
+          }}
+          initialZoom={16}
+          onMapReady={handleMapReady}
+          onCameraChange={handleCameraChange}
+        />
+      </View>
 
-            {/* 점령된 헥사곤들 */}
-            {Object.entries(ownedHexes).map(([h3Id, data]) => {
-              const coords = h3ToCoordinates(h3Id);
-              if (coords.length === 0) return null;
-
-              const isTeamA = data.team === 'A';
-              const fillColor = isTeamA ? 'rgba(0, 61, 122, 0.4)' : 'rgba(255, 107, 53, 0.4)'; // 파랑/주황 반투명
-              const strokeColor = isTeamA ? '#003D7A' : '#FF6B35';
-
-              return (
-                <Polygon
-                  key={h3Id}
-                  coordinates={coords}
-                  fillColor={fillColor}
-                  strokeColor={strokeColor}
-                  strokeWidth={1}
-                />
-              );
-            })}
-
-            {/* 다른 참가자들 마커 (간단하게 원으로 표시) */}
-            {Object.entries(otherParticipants).map(([userId, p]) => (
-              <Marker
-                key={userId}
-                coordinate={{ latitude: p.lat, longitude: p.lng }}
-                title={`User ${userId.slice(0, 4)}`}
-                description={`Team ${p.team}`}
-              >
-                <View style={[
-                  styles.participantMarker,
-                  { backgroundColor: p.team === 'A' ? '#003D7A' : '#FF6B35' }
-                ]} />
-              </Marker>
-            ))}
-
-          </MapView>
-        ) : (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#003D7A" />
-            <Text>위치 정보를 불러오는 중...</Text>
+      <SafeAreaView style={[styles.overlayContainer, { backgroundColor: 'transparent' }]} pointerEvents="box-none">
+        {/* 상단 정보 패널 */}
+        <View style={styles.overlayPanel} pointerEvents="none">
+          <View style={styles.timerContainer}>
+            <Text style={styles.timerText}>{formatDuration(recordingTime)}</Text>
           </View>
-        )}
-      </View>
-
-      {/* 상단 정보 패널 */}
-      <View style={styles.overlayPanel}>
-        <View style={styles.timerContainer}>
-          <Text style={styles.timerText}>{formatDuration(recordingTime)}</Text>
+          <View style={styles.statsContainer}>
+            <Text style={styles.statText}>A팀: {Object.values(ownedHexes).filter(x => x.team === 'A').length}</Text>
+            <Text style={styles.statText}>B팀: {Object.values(ownedHexes).filter(x => x.team === 'B').length}</Text>
+          </View>
         </View>
-        <View style={styles.statsContainer}>
-          {/* 여기에 팀 점수 등을 표시할 수 있음 */}
-          <Text style={styles.statText}>A팀: {Object.values(ownedHexes).filter(x => x.team === 'A').length}</Text>
-          <Text style={styles.statText}>B팀: {Object.values(ownedHexes).filter(x => x.team === 'B').length}</Text>
-        </View>
-      </View>
 
-      {/* 하단 컨트롤러 */}
-      <View style={styles.controlsContainer}>
-        {!isRecording ? (
-          <TouchableOpacity
-            style={[styles.controlButton, styles.startButton]}
-            onPress={handleStartRecord}
-            disabled={loading || !location}
-          >
-            {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>기록 시작</Text>}
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.recordingControls}>
-            {isPaused ? (
-              <TouchableOpacity
-                style={[styles.controlButton, styles.resumeButton]}
-                onPress={handleResumeRecord}
-                disabled={loading}
-              >
-                <Text style={styles.buttonText}>재개</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.controlButton, styles.pauseButton]}
-                onPress={handlePauseRecord}
-                disabled={loading}
-              >
-                <Text style={styles.buttonText}>일시중단</Text>
-              </TouchableOpacity>
-            )}
+        {/* 하단 컨트롤러 */}
+        <View style={styles.controlsContainer} pointerEvents="box-none">
+          {!isRecording ? (
             <TouchableOpacity
-              style={[styles.controlButton, styles.stopButton]}
-              onPress={handleCompleteStop}
+              style={[styles.controlButton, styles.startButton]}
+              onPress={handleStartRecord}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>완전종료</Text>}
+              {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>기록 시작</Text>}
             </TouchableOpacity>
-          </View>
-        )}
-      </View>
-    </SafeAreaView>
+          ) : (
+            <View style={styles.recordingControls} pointerEvents="box-none">
+              {isPaused ? (
+                <TouchableOpacity
+                  style={[styles.controlButton, styles.resumeButton]}
+                  onPress={handleResumeRecord}
+                  disabled={loading}
+                >
+                  <Text style={styles.buttonText}>재개</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.controlButton, styles.pauseButton]}
+                  onPress={handlePauseRecord}
+                  disabled={loading}
+                >
+                  <Text style={styles.buttonText}>일시중단</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.controlButton, styles.stopButton]}
+                onPress={handleCompleteStop}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>완전종료</Text>}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: 'black', // 흰색이 있으면 티가 나게 검은색으로 변경
+  },
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent', // 투명하게 설정하여 지도가 보이게 함
+    zIndex: 10,
   },
   mapContainer: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'blue',
+    zIndex: 1,
   },
   map: {
-    width: '100%',
-    height: '100%',
+    ...StyleSheet.absoluteFillObject,
   },
   loadingContainer: {
     flex: 1,
@@ -416,6 +437,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    zIndex: 10,
   },
   timerContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
@@ -447,6 +469,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    backgroundColor: 'transparent', // 투명하게 설정
   },
   recordingControls: {
     width: width * 0.8,
