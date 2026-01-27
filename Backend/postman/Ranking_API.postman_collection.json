@@ -1,0 +1,681 @@
+{
+	"info": {
+		"_postman_id": "ranking-api-collection",
+		"name": "🏆 랭킹 API 테스트",
+		"description": "랭킹 및 유저 통계 관련 API를 테스트하는 컬렉션입니다.\n\n**필수 환경 변수:**\n- `base_url`: API 기본 URL (예: http://localhost:8000)\n- `access_token`: 인증 토큰 (Bearer Token)\n- `user_id`: 테스트할 유저 ID (선택사항)\n\n**API 목록:**\n1. 전체 랭킹 리스트 조회\n2. 내 랭킹 정보 조회\n3. 특정 유저 통계 조회",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1️⃣ 전체 랭킹 리스트 조회",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"전체 랭킹 리스트 조회 성공\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('results');",
+							"    pm.expect(jsonData).to.have.property('count');",
+							"    pm.expect(jsonData.results).to.be.an('array');",
+							"    ",
+							"    if (jsonData.results && jsonData.results.length > 0) {",
+							"        const firstUser = jsonData.results[0];",
+							"        pm.expect(firstUser).to.have.property('rank');",
+							"        pm.expect(firstUser).to.have.property('user_id');",
+							"        pm.expect(firstUser).to.have.property('username');",
+							"        pm.expect(firstUser).to.have.property('rating');",
+							"        pm.expect(firstUser).to.have.property('games_played');",
+							"        pm.expect(firstUser).to.have.property('games_won');",
+							"        pm.expect(firstUser).to.have.property('games_lost');",
+							"        pm.expect(firstUser).to.have.property('win_rate');",
+							"        pm.expect(firstUser).to.have.property('mvp_count');",
+							"        pm.expect(firstUser).to.have.property('highest_rating');",
+							"        ",
+							"        // 1위는 rank가 1이어야 함",
+							"        pm.expect(firstUser.rank).to.eql(1);",
+							"        ",
+							"        // 레이팅이 내림차순인지 확인",
+							"        if (jsonData.results.length > 1) {",
+							"            pm.expect(firstUser.rating).to.be.at.least(jsonData.results[1].rating);",
+							"        }",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{access_token}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/ranking/?limit=100",
+					"host": ["{{base_url}}"],
+					"path": ["api", "ranking", ""],
+					"query": [
+						{
+							"key": "limit",
+							"value": "100",
+							"description": "반환 수 (기본 100, 최대 200)",
+							"disabled": false
+						}
+					]
+				},
+				"description": "전체 랭킹 리스트를 조회합니다.\n\n**쿼리 파라미터:**\n- `limit`: 반환할 사용자 수 (기본값: 100, 최대값: 200)\n\n**응답 형식:**\n```json\n{\n  \"results\": [\n    {\n      \"rank\": 1,\n      \"user_id\": \"uuid\",\n      \"username\": \"string\",\n      \"rating\": 1500,\n      \"games_played\": 10,\n      \"games_won\": 7,\n      \"games_lost\": 2,\n      \"games_draw\": 1,\n      \"win_rate\": 70.0,\n      \"mvp_count\": 3,\n      \"highest_rating\": 1600\n    }\n  ],\n  \"count\": 100\n}\n```\n\n**정렬:** 레이팅 내림차순 (높은 순위부터)"
+			},
+			"response": []
+		},
+		{
+			"name": "2️⃣ 전체 랭킹 리스트 조회 (limit=10)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"상위 10명 조회 성공\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData.count).to.be.at.most(10);",
+							"    pm.expect(jsonData.results.length).to.be.at.most(10);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{access_token}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/ranking/?limit=10",
+					"host": ["{{base_url}}"],
+					"path": ["api", "ranking", ""],
+					"query": [
+						{
+							"key": "limit",
+							"value": "10",
+							"description": "상위 10명만 조회"
+						}
+					]
+				},
+				"description": "상위 10명의 랭킹만 조회합니다."
+			},
+			"response": []
+		},
+		{
+			"name": "3️⃣ 전체 랭킹 리스트 조회 (limit=200)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"최대 200명 조회 성공\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData.count).to.be.at.most(200);",
+							"    pm.expect(jsonData.results.length).to.be.at.most(200);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{access_token}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/ranking/?limit=200",
+					"host": ["{{base_url}}"],
+					"path": ["api", "ranking", ""],
+					"query": [
+						{
+							"key": "limit",
+							"value": "200",
+							"description": "최대 200명 조회"
+						}
+					]
+				},
+				"description": "최대 200명의 랭킹을 조회합니다."
+			},
+			"response": []
+		},
+		{
+			"name": "4️⃣ 내 랭킹 정보 조회",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"내 랭킹 정보 조회 성공\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const jsonData = pm.response.json();",
+							"    ",
+							"    // 필수 필드 확인",
+							"    pm.expect(jsonData).to.have.property('rank');",
+							"    pm.expect(jsonData).to.have.property('user_id');",
+							"    pm.expect(jsonData).to.have.property('username');",
+							"    pm.expect(jsonData).to.have.property('rating');",
+							"    pm.expect(jsonData).to.have.property('games_played');",
+							"    pm.expect(jsonData).to.have.property('games_won');",
+							"    pm.expect(jsonData).to.have.property('games_lost');",
+							"    pm.expect(jsonData).to.have.property('games_draw');",
+							"    pm.expect(jsonData).to.have.property('win_rate');",
+							"    pm.expect(jsonData).to.have.property('mvp_count');",
+							"    pm.expect(jsonData).to.have.property('highest_rating');",
+							"    ",
+							"    // 데이터 타입 확인",
+							"    pm.expect(jsonData.rank).to.be.a('number');",
+							"    pm.expect(jsonData.rating).to.be.a('number');",
+							"    pm.expect(jsonData.games_played).to.be.a('number');",
+							"    pm.expect(jsonData.win_rate).to.be.a('number');",
+							"    ",
+							"    // 논리적 검증",
+							"    pm.expect(jsonData.rank).to.be.at.least(1);",
+							"    pm.expect(jsonData.games_played).to.be.at.least(0);",
+							"    pm.expect(jsonData.games_won + jsonData.games_lost + jsonData.games_draw).to.eql(jsonData.games_played);",
+							"    ",
+							"    // win_rate 계산 검증 (소수점 2자리)",
+							"    if (jsonData.games_played > 0) {",
+							"        const expectedWinRate = (jsonData.games_won / jsonData.games_played * 100).toFixed(2);",
+							"        pm.expect(jsonData.win_rate.toFixed(2)).to.eql(expectedWinRate);",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{access_token}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/ranking/me/",
+					"host": ["{{base_url}}"],
+					"path": ["api", "ranking", "me", ""]
+				},
+				"description": "현재 로그인한 사용자의 랭킹 정보를 조회합니다.\n\n**응답 형식:**\n```json\n{\n  \"rank\": 15,\n  \"user_id\": \"uuid\",\n  \"username\": \"string\",\n  \"rating\": 1450,\n  \"games_played\": 25,\n  \"games_won\": 18,\n  \"games_lost\": 5,\n  \"games_draw\": 2,\n  \"win_rate\": 72.0,\n  \"mvp_count\": 5,\n  \"highest_rating\": 1500\n}\n```\n\n**참고:**\n- `rank`: 전체 사용자 중 현재 레이팅 기준 순위\n- `win_rate`: 승률 (소수점 2자리, 게임을 한 번도 하지 않았으면 0.0)\n- `highest_rating`: 역대 최고 레이팅"
+			},
+			"response": []
+		},
+		{
+			"name": "5️⃣ 특정 유저 통계 조회",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// user_id 환경 변수가 설정되어 있는지 확인",
+							"const userId = pm.environment.get('user_id');",
+							"if (!userId) {",
+							"    console.warn('⚠️ user_id 환경 변수가 설정되지 않았습니다.');",
+							"    console.warn('전체 랭킹 조회 후 상위 유저의 user_id를 사용하거나 직접 설정해주세요.');",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"특정 유저 통계 조회 성공\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const jsonData = pm.response.json();",
+							"    ",
+							"    // 필수 필드 확인",
+							"    pm.expect(jsonData).to.have.property('rank');",
+							"    pm.expect(jsonData).to.have.property('user_id');",
+							"    pm.expect(jsonData).to.have.property('username');",
+							"    pm.expect(jsonData).to.have.property('rating');",
+							"    pm.expect(jsonData).to.have.property('games_played');",
+							"    pm.expect(jsonData).to.have.property('games_won');",
+							"    pm.expect(jsonData).to.have.property('games_lost');",
+							"    pm.expect(jsonData).to.have.property('games_draw');",
+							"    pm.expect(jsonData).to.have.property('win_rate');",
+							"    pm.expect(jsonData).to.have.property('mvp_count');",
+							"    pm.expect(jsonData).to.have.property('highest_rating');",
+							"    ",
+							"    // 요청한 user_id와 응답의 user_id가 일치하는지 확인",
+							"    const requestedUserId = pm.environment.get('user_id');",
+							"    if (requestedUserId) {",
+							"        pm.expect(jsonData.user_id).to.eql(requestedUserId);",
+							"    }",
+							"});",
+							"",
+							"pm.test(\"404 에러 처리 (존재하지 않는 유저)\", function () {",
+							"    // 이 테스트는 실제로 404가 발생할 때만 통과",
+							"    if (pm.response.code === 404) {",
+							"        const jsonData = pm.response.json();",
+							"        pm.expect(jsonData).to.have.property('error');",
+							"        pm.expect(jsonData.error).to.eql('NOT_FOUND');",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{access_token}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/users/{{user_id}}/stats/",
+					"host": ["{{base_url}}"],
+					"path": ["api", "users", "{{user_id}}", "stats", ""]
+				},
+				"description": "특정 유저의 통계 정보를 조회합니다.\n\n**URL 파라미터:**\n- `user_id`: 조회할 유저의 UUID\n\n**응답 형식:**\n```json\n{\n  \"rank\": 10,\n  \"user_id\": \"uuid\",\n  \"username\": \"string\",\n  \"rating\": 1500,\n  \"games_played\": 30,\n  \"games_won\": 22,\n  \"games_lost\": 6,\n  \"games_draw\": 2,\n  \"win_rate\": 73.33,\n  \"mvp_count\": 8,\n  \"highest_rating\": 1600\n}\n```\n\n**에러 응답 (404):**\n```json\n{\n  \"error\": \"NOT_FOUND\",\n  \"message\": \"사용자를 찾을 수 없습니다.\"\n}\n```\n\n**사용 방법:**\n1. 전체 랭킹 조회 API를 먼저 실행하여 `user_id`를 확인\n2. 환경 변수 `user_id`에 해당 UUID 설정\n3. 이 API 실행"
+			},
+			"response": []
+		},
+		{
+			"name": "6️⃣ 랭킹 비교 시나리오",
+			"item": [
+				{
+					"name": "6-1. 전체 랭킹 조회 (상위 5명)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const jsonData = pm.response.json();",
+									"    if (jsonData.results && jsonData.results.length >= 2) {",
+									"        // 상위 2명의 user_id를 환경 변수에 저장",
+									"        pm.environment.set('top1_user_id', jsonData.results[0].user_id);",
+									"        pm.environment.set('top1_rating', jsonData.results[0].rating);",
+									"        pm.environment.set('top2_user_id', jsonData.results[1].user_id);",
+									"        pm.environment.set('top2_rating', jsonData.results[1].rating);",
+									"        ",
+									"        console.log('1위 유저:', jsonData.results[0].username, '레이팅:', jsonData.results[0].rating);",
+									"        console.log('2위 유저:', jsonData.results[1].username, '레이팅:', jsonData.results[1].rating);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/ranking/?limit=5",
+							"host": ["{{base_url}}"],
+							"path": ["api", "ranking", ""],
+							"query": [
+								{
+									"key": "limit",
+									"value": "5"
+								}
+							]
+						},
+						"description": "상위 5명의 랭킹을 조회하고, 1위와 2위 유저의 정보를 환경 변수에 저장합니다."
+					},
+					"response": []
+				},
+				{
+					"name": "6-2. 1위 유저 상세 통계",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"1위 유저 통계 조회 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.rank).to.eql(1);",
+									"    pm.expect(jsonData.user_id).to.eql(pm.environment.get('top1_user_id'));",
+									"    ",
+									"    console.log('1위 유저 상세 정보:');",
+									"    console.log('- 레이팅:', jsonData.rating);",
+									"    console.log('- 게임 수:', jsonData.games_played);",
+									"    console.log('- 승률:', jsonData.win_rate + '%');",
+									"    console.log('- MVP 횟수:', jsonData.mvp_count);",
+									"    console.log('- 최고 레이팅:', jsonData.highest_rating);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/users/{{top1_user_id}}/stats/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users", "{{top1_user_id}}", "stats", ""]
+						},
+						"description": "1위 유저의 상세 통계를 조회합니다."
+					},
+					"response": []
+				},
+				{
+					"name": "6-3. 2위 유저 상세 통계",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"2위 유저 통계 조회 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData.rank).to.eql(2);",
+									"    pm.expect(jsonData.user_id).to.eql(pm.environment.get('top2_user_id'));",
+									"    ",
+									"    console.log('2위 유저 상세 정보:');",
+									"    console.log('- 레이팅:', jsonData.rating);",
+									"    console.log('- 게임 수:', jsonData.games_played);",
+									"    console.log('- 승률:', jsonData.win_rate + '%');",
+									"    console.log('- MVP 횟수:', jsonData.mvp_count);",
+									"    console.log('- 최고 레이팅:', jsonData.highest_rating);",
+									"    ",
+									"    // 1위와 2위 레이팅 비교",
+									"    const top1Rating = parseFloat(pm.environment.get('top1_rating'));",
+									"    const top2Rating = jsonData.rating;",
+									"    const ratingDiff = top1Rating - top2Rating;",
+									"    console.log('레이팅 차이:', ratingDiff);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/users/{{top2_user_id}}/stats/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users", "{{top2_user_id}}", "stats", ""]
+						},
+						"description": "2위 유저의 상세 통계를 조회하고, 1위와 비교합니다."
+					},
+					"response": []
+				},
+				{
+					"name": "6-4. 내 랭킹과 비교",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"내 랭킹 조회 및 비교 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    ",
+									"    const top1Rating = parseFloat(pm.environment.get('top1_rating'));",
+									"    const myRating = jsonData.rating;",
+									"    const ratingDiff = top1Rating - myRating;",
+									"    ",
+									"    console.log('내 랭킹 정보:');",
+									"    console.log('- 순위:', jsonData.rank + '위');",
+									"    console.log('- 레이팅:', jsonData.rating);",
+									"    console.log('- 1위와의 레이팅 차이:', ratingDiff);",
+									"    console.log('- 게임 수:', jsonData.games_played);",
+									"    console.log('- 승률:', jsonData.win_rate + '%');",
+									"    ",
+									"    if (ratingDiff > 0) {",
+									"        console.log('1위보다', ratingDiff, '점 낮습니다.');",
+									"    } else if (ratingDiff < 0) {",
+									"        console.log('1위보다', Math.abs(ratingDiff), '점 높습니다!');",
+									"    } else {",
+									"        console.log('1위와 동일한 레이팅입니다!');",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/ranking/me/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "ranking", "me", ""]
+						},
+						"description": "내 랭킹을 조회하고 1위 유저와 비교합니다."
+					},
+					"response": []
+				}
+			],
+			"description": "여러 유저의 랭킹을 비교하는 시나리오입니다.\n\n**실행 순서:**\n1. 상위 5명 조회\n2. 1위 유저 상세 통계\n3. 2위 유저 상세 통계\n4. 내 랭킹과 비교\n\n**결과:**\n- 1위와 2위 유저의 상세 통계 비교\n- 내 랭킹과 1위의 레이팅 차이 확인"
+		},
+		{
+			"name": "7️⃣ 에러 케이스 테스트",
+			"item": [
+				{
+					"name": "7-1. 인증 없이 랭킹 조회 (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"인증 없이 접근 시 401 에러\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/ranking/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "ranking", ""]
+						},
+						"description": "인증 토큰 없이 랭킹을 조회하면 401 Unauthorized 에러가 발생해야 합니다."
+					},
+					"response": []
+				},
+				{
+					"name": "7-2. 잘못된 토큰으로 조회 (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"잘못된 토큰으로 접근 시 401 에러\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer invalid_token_12345"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/ranking/me/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "ranking", "me", ""]
+						},
+						"description": "잘못된 토큰으로 내 랭킹을 조회하면 401 에러가 발생해야 합니다."
+					},
+					"response": []
+				},
+				{
+					"name": "7-3. 존재하지 않는 유저 통계 조회 (404)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"존재하지 않는 유저 조회 시 404 에러\", function () {",
+									"    pm.response.to.have.status(404);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"    pm.expect(jsonData.error).to.eql('NOT_FOUND');",
+									"    pm.expect(jsonData).to.have.property('message');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/users/00000000-0000-0000-0000-000000000000/stats/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users", "00000000-0000-0000-0000-000000000000", "stats", ""]
+						},
+						"description": "존재하지 않는 유저 ID로 통계를 조회하면 404 Not Found 에러가 발생해야 합니다."
+					},
+					"response": []
+				},
+				{
+					"name": "7-4. limit 파라미터 검증 (최대값 초과)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"limit 최대값 초과 시 자동으로 200으로 제한\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    // limit=500을 요청했지만 최대 200으로 제한되어야 함",
+									"    pm.expect(jsonData.count).to.be.at.most(200);",
+									"    pm.expect(jsonData.results.length).to.be.at.most(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/ranking/?limit=500",
+							"host": ["{{base_url}}"],
+							"path": ["api", "ranking", ""],
+							"query": [
+								{
+									"key": "limit",
+									"value": "500",
+									"description": "최대값(200) 초과"
+								}
+							]
+						},
+						"description": "limit 파라미터에 200을 초과하는 값을 전달하면 자동으로 200으로 제한되어야 합니다."
+					},
+					"response": []
+				}
+			],
+			"description": "에러 케이스 및 엣지 케이스를 테스트합니다.\n\n**테스트 항목:**\n1. 인증 없이 접근 (401)\n2. 잘못된 토큰 (401)\n3. 존재하지 않는 유저 (404)\n4. limit 최대값 초과 검증"
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "access_token",
+			"value": "",
+			"type": "string",
+			"description": "JWT Access Token (Bearer Token)"
+		},
+		{
+			"key": "user_id",
+			"value": "",
+			"type": "string",
+			"description": "테스트할 유저의 UUID"
+		},
+		{
+			"key": "top1_user_id",
+			"value": "",
+			"type": "string",
+			"description": "1위 유저의 UUID (자동 설정)"
+		},
+		{
+			"key": "top1_rating",
+			"value": "",
+			"type": "string",
+			"description": "1위 유저의 레이팅 (자동 설정)"
+		},
+		{
+			"key": "top2_user_id",
+			"value": "",
+			"type": "string",
+			"description": "2위 유저의 UUID (자동 설정)"
+		},
+		{
+			"key": "top2_rating",
+			"value": "",
+			"type": "string",
+			"description": "2위 유저의 레이팅 (자동 설정)"
+		}
+	]
+}
