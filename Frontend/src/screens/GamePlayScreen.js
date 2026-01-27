@@ -12,7 +12,7 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import paintItemIcon from '../../assets/icons/paint item_icon.png';
 import hexagonBlue from '../../assets/icons/simple_hexagon.png';
 import hexagonOrange from '../../assets/icons/simple_hexagon_orange.png';
@@ -103,6 +103,7 @@ export default function GamePlayScreen({ navigation, route }) {
   // 헥사곤 하이라이트 및 선택 상태
   const [highlightedTeam, setHighlightedTeam] = useState(null); // null, 'A', 'B'
   const [selectedHexId, setSelectedHexId] = useState(null); // 터치로 선택된 헥사곤 ID
+  const [lastVisitedHexId, setLastVisitedHexId] = useState(null); // 마지막으로 발을 들인 헥사곤 ID
 
   // 슈퍼 페인트볼 조준 (깜빡임효과)
   const [aimingHexes, setAimingHexes] = useState([]);
@@ -165,25 +166,33 @@ export default function GamePlayScreen({ navigation, route }) {
 
     const currentH3Index = latLngToCell(location.latitude, location.longitude, KAIST_CONFIG.h3Resolution);
 
-    // 현재 위치가 게임 그리드 안에 있고, 내 팀 땅이 아니라면 점령
-    if (ownedHexes[currentH3Index]) {
-      const currentHex = ownedHexes[currentH3Index];
-      if (currentHex.team !== myTeam) {
-        console.log(`🚩 땅 점령! ${currentH3Index} : ${currentHex.team || 'None'} -> ${myTeam}`);
+    // 1. 새로운 헥사곤에 진입했는지 확인
+    if (currentH3Index !== lastVisitedHexId) {
+      setLastVisitedHexId(currentH3Index);
 
-        setOwnedHexes(prev => ({
-          ...prev,
-          [currentH3Index]: {
-            ...prev[currentH3Index],
-            team: myTeam, // 내 팀으로 변경
-            ownerId: user?.id || 'me'
-          }
-        }));
+      // 2. 현재 위치가 우리 그리드 안에 있는지 확인
+      if (ownedHexes[currentH3Index]) {
+        const currentHex = ownedHexes[currentH3Index];
 
-        setHasAcquiredHex(true); // 도장 쾅!
+        if (currentHex.team === myTeam) {
+          // [추가] 이미 내 팀 땅인 곳에 가면 게이지 +60
+          console.log(`♻️ 내 팀 땅 재방문! 게이지 충전 (+60)`);
+          setPaintballCount(prev => Math.min(prev + 60, 100)); // 최대 100으로 설정
+        } else {
+          // [기존] 내 팀 땅이 아니라면 점령
+          console.log(`🚩 땅 점령! ${currentH3Index} : ${currentHex.team || 'None'} -> ${myTeam}`);
 
-        // 소켓으로 점령 정보 전송 (구현 시)
-        // socketService.sendHexClaim(...)
+          setOwnedHexes(prev => ({
+            ...prev,
+            [currentH3Index]: {
+              ...prev[currentH3Index],
+              team: myTeam, // 내 팀으로 변경
+              ownerId: user?.id || 'me'
+            }
+          }));
+
+          setHasAcquiredHex(true); // 도장 쾅!
+        }
       }
     }
   }, [location, myTeam]); // location이나 myTeam이 바뀌면 체크
@@ -627,6 +636,52 @@ export default function GamePlayScreen({ navigation, route }) {
     console.log('🎯 슈퍼 페인트볼 조준 시작:', neighbors.length);
   };
 
+  // 페인트볼 교환: 일반 3개 -> 슈퍼 1개 (아래 화살표 ↓)
+  const exchangeToSuper = () => {
+    if (paintballCount < 3) {
+      Alert.alert('교환 실패', '일반 페인트볼이 3개 이상 필요합니다.');
+      return;
+    }
+
+    Alert.alert(
+      '슈퍼 페인트볼 제작',
+      '일반 페인트볼 3개를 슈퍼 페인트볼 1개로 교환하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '교환',
+          onPress: () => {
+            setPaintballCount(prev => prev - 3);
+            setSuperPaintballCount(prev => prev + 1);
+          }
+        }
+      ]
+    );
+  };
+
+  // 페인트볼 교환: 슈퍼 1개 -> 일반 3개 (위 화살표 ↑)
+  const exchangeToRegular = () => {
+    if (superPaintballCount < 1) {
+      Alert.alert('교환 실패', '보유한 슈퍼 페인트볼이 없습니다.');
+      return;
+    }
+
+    Alert.alert(
+      '페인트볼 분해',
+      '슈퍼 페인트볼 1개를 일반 페인트볼 3개로 분해하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '분해',
+          onPress: () => {
+            setSuperPaintballCount(prev => prev - 1);
+            setPaintballCount(prev => prev + 3);
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       {/* 지도 영역 (전체 배경) */}
@@ -834,7 +889,7 @@ export default function GamePlayScreen({ navigation, route }) {
       <View style={styles.attendanceButtonContainer}>
         {/* 일반 페인트볼 (New) */}
         <TouchableOpacity
-          style={[styles.hexCounterItem, { alignSelf: 'flex-start', marginBottom: 6, backgroundColor: aimingType === 'normal' ? 'rgba(255, 64, 129, 0.9)' : 'rgba(230, 230, 230, 0.8)', padding: 6, borderRadius: 12 }]}
+          style={[styles.hexCounterItem, { alignSelf: 'flex-start', marginBottom: 2, top: -5, zIndex: 5, backgroundColor: aimingType === 'normal' ? 'rgba(255, 64, 129, 0.9)' : 'rgba(230, 230, 230, 0.8)', padding: 6, borderRadius: 12 }]}
           onPress={() => {
             setAimingHexes([]);
             setAimingType(null);
@@ -857,9 +912,30 @@ export default function GamePlayScreen({ navigation, route }) {
           </Text>
         </TouchableOpacity>
 
+        {/* 교환 화살표 UI 영역 (중첩 배치) */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8, marginVertical: -10, zIndex: 10, gap: 0 }}>
+          {/* 위쪽으로 (분해): 슈퍼 1 -> 일반 3 */}
+          <TouchableOpacity
+            onLongPress={exchangeToRegular}
+            delayLongPress={500}
+            style={{ padding: 0 }}
+          >
+            <MaterialCommunityIcons name="arrow-up-bold" size={40} color="black" />
+          </TouchableOpacity>
+
+          {/* 아래쪽으로 (제작): 일반 3 -> 슈퍼 1 */}
+          <TouchableOpacity
+            onLongPress={exchangeToSuper}
+            delayLongPress={500}
+            style={{ padding: 0 }}
+          >
+            <MaterialCommunityIcons name="arrow-down-bold" size={40} color="black" />
+          </TouchableOpacity>
+        </View>
+
         {/* 슈퍼 페인트볼 (위쪽에 배치) */}
         <TouchableOpacity
-          style={[styles.hexCounterItem, { alignSelf: 'flex-start', marginBottom: 8, backgroundColor: aimingType === 'super' ? 'rgba(255, 64, 129, 0.9)' : 'rgba(200, 200, 200, 0.9)', padding: 10, borderRadius: 15 }]}
+          style={[styles.hexCounterItem, { alignSelf: 'flex-start', marginTop: 2, zIndex: 5, backgroundColor: aimingType === 'super' ? 'rgba(255, 64, 129, 0.9)' : 'rgba(200, 200, 200, 0.9)', padding: 10, borderRadius: 15 }]}
           onPress={() => {
             setAimingHexes([]);
             setAimingType(null);
@@ -941,6 +1017,45 @@ export default function GamePlayScreen({ navigation, route }) {
               <Text style={styles.daysLabelText}>연속 {displayDays}일차</Text>
             </View>
           )}
+        </View>
+      </View>
+
+      {/* 오른족 실린더형 페인트볼 게이지 (New) */}
+      <View style={styles.rightGaugeContainer}>
+        <View style={styles.cylinderTube}>
+          {/* 눈금 표시 (선택사항) */}
+          {[...Array(5)].map((_, i) => (
+            <View key={i} style={[styles.gaugeTick, { bottom: (i + 1) * 25 }]} />
+          ))}
+
+          {/* 실제 채워지는 게이지 */}
+          <View
+            style={[
+              styles.cylinderFill,
+              {
+                height: `${Math.min(paintballCount, 100)}%`,
+                backgroundColor: myTeam === 'B'
+                  ? `rgba(255, 152, 0, ${0.4 + (Math.min(paintballCount, 100) / 100) * 0.6})`
+                  : `rgba(33, 150, 243, ${0.4 + (Math.min(paintballCount, 100) / 100) * 0.6})`,
+                shadowColor: myTeam === 'B' ? '#FF9800' : '#2196F3',
+              }
+            ]}
+          >
+            {/* 상단 액체 표면 효과 */}
+            <View style={styles.liquidTop} />
+          </View>
+        </View>
+
+        {/* 하단 캡 */}
+        <View style={styles.cylinderCap} />
+
+        {/* 아이콘 표시 */}
+        <View style={styles.gaugeIconContainer}>
+          <Ionicons
+            name="flask-outline"
+            size={18}
+            color="white"
+          />
         </View>
       </View>
 
@@ -1229,4 +1344,63 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: 'bold',
   },
+  // 실린더 게이지 스타일
+  rightGaugeContainer: {
+    position: 'absolute',
+    right: 20,
+    bottom: 180,
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  cylinderTube: {
+    width: 40,
+    height: 150,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  cylinderFill: {
+    width: '100%',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.8,
+    shadowRadius: 10,
+    borderTopLeftRadius: 5,
+    borderTopRightRadius: 5,
+  },
+  liquidTop: {
+    height: 4,
+    width: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    position: 'absolute',
+    top: 0,
+  },
+  gaugeTick: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  cylinderCap: {
+    width: 46,
+    height: 8,
+    backgroundColor: '#333',
+    borderRadius: 4,
+    marginTop: -4,
+    zIndex: 101,
+  },
+  gaugeIconContainer: {
+    marginTop: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  }
 });
