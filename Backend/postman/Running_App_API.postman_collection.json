@@ -806,6 +806,138 @@
 			]
 		},
 		{
+			"name": "랭킹 API",
+			"item": [
+				{
+					"name": "전체 랭킹 리스트",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"랭킹 리스트 조회 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('results');",
+									"    pm.expect(jsonData).to.have.property('count');",
+									"    if (jsonData.results && jsonData.results.length > 0) {",
+									"        pm.expect(jsonData.results[0]).to.have.property('rank');",
+									"        pm.expect(jsonData.results[0]).to.have.property('rating');",
+									"        pm.expect(jsonData.results[0]).to.have.property('username');",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/ranking/?limit=100",
+							"host": ["{{base_url}}"],
+							"path": ["api", "ranking", ""],
+							"query": [
+								{
+									"key": "limit",
+									"value": "100",
+									"description": "반환 수 (기본 100, 최대 200)"
+								}
+							]
+						},
+						"description": "전체 랭킹 리스트 조회\n- 레이팅 순으로 정렬\n- limit 파라미터로 반환 수 조절 (기본 100, 최대 200)"
+					},
+					"response": []
+				},
+				{
+					"name": "내 랭킹 정보",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"내 랭킹 정보 조회 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('rank');",
+									"    pm.expect(jsonData).to.have.property('rating');",
+									"    pm.expect(jsonData).to.have.property('games_played');",
+									"    pm.expect(jsonData).to.have.property('games_won');",
+									"    pm.expect(jsonData).to.have.property('games_lost');",
+									"    pm.expect(jsonData).to.have.property('win_rate');",
+									"    pm.expect(jsonData).to.have.property('mvp_count');",
+									"    pm.expect(jsonData).to.have.property('highest_rating');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/ranking/me/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "ranking", "me", ""]
+						},
+						"description": "내 랭킹 정보 조회\n- 현재 레이팅, 순위, 게임 통계, MVP 횟수 등"
+					},
+					"response": []
+				},
+				{
+					"name": "특정 유저 통계",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"유저 통계 조회 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('user_id');",
+									"    pm.expect(jsonData).to.have.property('username');",
+									"    pm.expect(jsonData).to.have.property('rating');",
+									"    pm.expect(jsonData).to.have.property('rank');",
+									"    pm.expect(jsonData).to.have.property('games_played');",
+									"    pm.expect(jsonData).to.have.property('win_rate');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/users/{{user_id}}/stats/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users", "{{user_id}}", "stats", ""]
+						},
+						"description": "특정 유저의 통계 조회\n- user_id를 URL 파라미터로 전달"
+					},
+					"response": []
+				}
+			]
+		},
+		{
 			"name": "🔄 두 사용자 상호작용 테스트",
 			"description": "두 사용자(User1, User2)가 서로 친구 요청, 방 초대 등을 주고받는 시나리오를 테스트합니다.\n\n**순서대로 실행하세요:**\n1. User1 회원가입\n2. User2 회원가입\n3. User1이 User2에게 친구 요청\n4. User2가 우편함에서 친구 요청 확인 및 수락\n5. User1이 방 생성\n6. User1이 User2를 방에 초대\n7. User2가 방 초대 수락",
 			"item": [

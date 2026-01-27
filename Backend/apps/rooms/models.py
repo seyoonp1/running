@@ -258,6 +258,11 @@ class Participant(models.Model):
     paintball_count = models.IntegerField(default=0, help_text='페인트볼 개수')
     super_paintball_count = models.IntegerField(default=0, help_text='슈퍼 페인트볼 개수')
     paintball_gauge = models.IntegerField(default=0, help_text='페인트볼 게이지 (0-100)')
+
+    # 게임 결과 통계
+    hexes_claimed = models.IntegerField(default=0, help_text='점령한 땅 수')
+    rating_change = models.IntegerField(default=0, help_text='레이팅 변동')
+    is_mvp = models.BooleanField(default=False, help_text='MVP 여부')
     
     # 출석 보상
     consecutive_attendance_days = models.IntegerField(default=0, help_text='연속 출석일')

@@ -39,7 +39,16 @@ GPS 기반 러닝 "땅따먹기" 게임. H3 헥사곤 그리드 시스템을 사
 - 팀 내부 승리 보상 동일
 - MVP(가장 많은 땅을 점령한 사용자)에게 추가 보상
 
-### 5. H3 헥사곤 시스템
+### 5. 랭킹 시스템 (ELO)
+- **레이팅**: 모든 사용자는 기본 1000점에서 시작
+- **팀 승패에 따른 변동**: 
+  - 상대팀 평균 레이팅이 높을 때 이기면 → 더 많이 오름
+  - 상대팀 평균 레이팅이 낮을 때 지면 → 더 많이 떨어짐
+  - 무승부: 레이팅 변동 적음
+- **MVP 보너스**: 팀과 관계없이 가장 많은 땅을 점령한 참가자에게 +15점 추가
+- **통계 저장**: 총 게임 수, 승/패/무, MVP 횟수, 최고 레이팅 기록
+
+### 6. H3 헥사곤 시스템
 - H3 해상도: Resolution 8 사용
 - 지도는 육각형 그리드(헥사곤)로 분할
 - 특정 속도 이상이면 기록 불가 (부정 방지)
@@ -205,7 +214,14 @@ Response:
   "id": "uuid",
   "username": "runner1",
   "email": "runner1@example.com",
-  "created_at": "2026-01-25T00:00:00Z"
+  "created_at": "2026-01-25T00:00:00Z",
+  "rating": 1250,
+  "games_played": 10,
+  "games_won": 6,
+  "games_lost": 3,
+  "games_draw": 1,
+  "mvp_count": 2,
+  "highest_rating": 1300
 }
 ```
 
@@ -378,19 +394,25 @@ Response:
   "participants": [
     {
       "id": "uuid",
-      "user": {"id": "uuid", "username": "runner1"},
+      "user": {"id": "uuid", "username": "runner1", "rating": 1200},
       "team": "A",
       "is_host": true,
       "paintball_count": 0,
-      "super_paintball_count": 0
+      "super_paintball_count": 0,
+      "hexes_claimed": 0,      // 게임 종료 후 저장
+      "rating_change": 0,      // 게임 종료 후 저장
+      "is_mvp": false          // 게임 종료 후 저장
     },
     {
       "id": "uuid",
-      "user": {"id": "uuid", "username": "runner2"},
+      "user": {"id": "uuid", "username": "runner2", "rating": 1150},
       "team": "B",
       "is_host": false,
       "paintball_count": 0,
-      "super_paintball_count": 0
+      "super_paintball_count": 0,
+      "hexes_claimed": 0,
+      "rating_change": 0,
+      "is_mvp": false
     }
   ]
 }
@@ -974,6 +996,126 @@ Response (거절):
 
 ---
 
+### 랭킹 API
+
+#### 22. 전체 랭킹 리스트
+**GET** `/api/ranking/`
+
+**언제 쓰이는가**: 
+- 랭킹 화면에서 전체 사용자 순위를 볼 때
+- 리더보드에서 상위 랭커를 확인할 때
+- 자신의 순위와 다른 사용자를 비교할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 레이팅 순으로 정렬
+- 쿼리 파라미터: `limit` (반환 수, 기본 100, 최대 200)
+
+```json
+Query Parameters:
+- limit: 반환 수 (기본 100, 최대 200)
+
+Response:
+{
+  "count": 50,
+  "results": [
+    {
+      "rank": 1,
+      "user_id": "uuid",
+      "username": "topRunner",
+      "rating": 1450,
+      "games_played": 25,
+      "games_won": 18,
+      "games_lost": 5,
+      "games_draw": 2,
+      "win_rate": 72.0,
+      "mvp_count": 8,
+      "highest_rating": 1480
+    },
+    {
+      "rank": 2,
+      "user_id": "uuid",
+      "username": "runner2",
+      "rating": 1320,
+      "games_played": 20,
+      "games_won": 12,
+      "games_lost": 6,
+      "games_draw": 2,
+      "win_rate": 60.0,
+      "mvp_count": 5,
+      "highest_rating": 1350
+    }
+  ]
+}
+```
+
+#### 23. 내 랭킹 정보
+**GET** `/api/ranking/me/`
+
+**언제 쓰이는가**: 
+- 프로필 화면에서 내 랭킹 정보를 확인할 때
+- 게임 후 내 레이팅 변화를 확인할 때
+- 내 승률과 MVP 횟수를 확인할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- 자신의 랭킹 정보만 조회 가능
+
+```json
+Response:
+{
+  "rank": 15,
+  "user_id": "uuid",
+  "username": "myUsername",
+  "rating": 1250,
+  "games_played": 10,
+  "games_won": 6,
+  "games_lost": 3,
+  "games_draw": 1,
+  "win_rate": 60.0,
+  "mvp_count": 2,
+  "highest_rating": 1300
+}
+```
+
+#### 24. 특정 유저 통계
+**GET** `/api/users/{user_id}/stats/`
+
+**언제 쓰이는가**: 
+- 다른 사용자의 프로필을 볼 때
+- 친구의 게임 통계를 확인할 때
+- 특정 사용자의 랭킹과 승률을 확인할 때
+
+**제약 조건**:
+- 인증 필요 (JWT 토큰 필수)
+- `user_id`가 유효한 사용자 ID여야 함
+- 존재하지 않는 사용자면 404 에러
+
+```json
+Response:
+{
+  "rank": 25,
+  "user_id": "uuid",
+  "username": "otherUser",
+  "rating": 1180,
+  "games_played": 15,
+  "games_won": 8,
+  "games_lost": 5,
+  "games_draw": 2,
+  "win_rate": 53.33,
+  "mvp_count": 3,
+  "highest_rating": 1220
+}
+
+Response (사용자 없음):
+{
+  "error": "NOT_FOUND",
+  "message": "사용자를 찾을 수 없습니다."
+}
+```
+
+---
+
 ## WebSocket API
 
 ### 연결
@@ -1168,12 +1310,21 @@ ws://{host}/ws/room/{room_id}/?token={jwt_token}
 {
   "type": "game_ended",
   "room_id": "uuid",
-  "winner_team": "A",
-  "mvp_user_id": "uuid",
-  "team_a_hexes": 150,
-  "team_b_hexes": 120
+  "winner_team": "A",           // "A" | "B" | null (무승부)
+  "mvp_id": "uuid",             // MVP 사용자 ID (동률이면 null)
+  "mvp_username": "topRunner",  // MVP 사용자명
+  "team_a_count": 150,          // A팀 점령 hex 수
+  "team_b_count": 120,          // B팀 점령 hex 수
+  "timestamp": "2026-02-28T23:59:59Z"
 }
 ```
+
+**게임 종료 시 레이팅 변동**:
+- 각 참가자의 레이팅은 ELO 공식에 따라 자동 계산됨
+- 승리팀 참가자: 레이팅 상승 (상대팀 평균 레이팅에 따라 변동폭 결정)
+- 패배팀 참가자: 레이팅 하락 (상대팀 평균 레이팅에 따라 변동폭 결정)
+- MVP (최다 점령자): 팀 승패와 관계없이 +15점 추가 보너스
+- 무승부: 소폭의 레이팅 변동 (ELO 기댓값 기반)
 
 #### 11. 기록 시작/종료 알림
 ```json
@@ -1234,6 +1385,7 @@ ws://{host}/ws/room/{room_id}/?token={jwt_token}
 | `NOT_FOUND` | 리소스 없음 |
 | `ROOM_FULL` | 방 정원 초과 |
 | `TEAM_FULL` | 팀 정원 초과 |
+
 | `ROOM_NOT_READY` | 방이 준비 상태가 아님 |
 | `ROOM_NOT_ACTIVE` | 방이 진행 중이 아님 |
 | `NOT_RECORDING` | 기록 중이 아님 |

@@ -71,6 +71,60 @@ services:
       - app-network
     restart: unless-stopped
 
+  celery_worker:
+    build: .
+    command: celery -A config worker -l info
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - DB_NAME=${DB_NAME:-hexgame}
+      - DB_USER=${DB_USER:-hexgame}
+      - DB_PASSWORD=${DB_PASSWORD:-hexgame}
+      - DB_HOST=${DB_HOST:-db}
+      - DB_PORT=${DB_PORT:-5432}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-change-me-in-production}
+      - DEBUG=False
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-*}
+      - CORS_ALLOW_ALL_ORIGINS=True
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  celery_beat:
+    build: .
+    command: celery -A config beat -l info
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - DB_NAME=${DB_NAME:-hexgame}
+      - DB_USER=${DB_USER:-hexgame}
+      - DB_PASSWORD=${DB_PASSWORD:-hexgame}
+      - DB_HOST=${DB_HOST:-db}
+      - DB_PORT=${DB_PORT:-5432}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-change-me-in-production}
+      - DEBUG=False
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-*}
+      - CORS_ALLOW_ALL_ORIGINS=True
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+
   # Socket.IO 서버는 MVP에서 사용하지 않음 (Django Channels 사용)
   # WebSocket은 Django Channels를 통해 ws://{host}/ws/room/{room_id}/ 로 접근
 
