@@ -420,7 +420,8 @@ class RoomConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_room(self):
         try:
-            return Room.objects.get(id=self.room_id)
+            # select_related로 game_area를 미리 로드하여 비동기 컨텍스트에서 lazy loading 방지
+            return Room.objects.select_related('game_area').get(id=self.room_id)
         except Room.DoesNotExist:
             return None
     
