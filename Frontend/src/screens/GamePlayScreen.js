@@ -14,6 +14,8 @@ import * as Location from 'expo-location';
 import { cellToBoundary } from 'h3-js';
 import { startRecord, stopRecord } from '../services/recordService';
 import socketService from '../services/socketService';
+import BackgroundLocationService from '../services/BackgroundLocationService';
+import { calculateDistance, calculatePace, formatDistance, formatTime } from '../utils/gpsUtils';
 import { useAuth } from '../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
@@ -48,7 +50,12 @@ export default function GamePlayScreen({ navigation, route }) {
     longitude: 126.9780,
   });
   const [routeCoordinates, setRouteCoordinates] = useState([]);
-  const [subscription, setSubscription] = useState(null);
+
+  // 러닝 통계 상태
+  const [totalDistance, setTotalDistance] = useState(0); // 총 이동거리 (미터)
+  const [currentPace, setCurrentPace] = useState("--'--\""); // 현재 페이스
+  const [averagePace, setAveragePace] = useState("--'--\""); // 평균 페이스
+  const lastLocationRef = useRef(null); // 이전 위치 저장용
 
   // 게임 데이터 상태
   const [myTeam, setMyTeam] = useState(null); // 'A' or 'B'
@@ -182,16 +189,64 @@ export default function GamePlayScreen({ navigation, route }) {
     // socketService.on('game_info', ...);
   };
 
-  const cleanup = () => {
-    if (subscription) {
-      subscription.remove();
-    }
+  const cleanup = async () => {
+    // 백그라운드 위치 추적 중지 (isRecording 상태 확인 필요)
+    await BackgroundLocationService.stopTracking();
     if (roomId) {
       socketService.disconnect();
     }
   };
 
-  // 기록 시작 핸들러
+  // 위치 업데이트 핸들러 (백그라운드/포그라운드 공통)
+  const handleLocationUpdate = (coords) => {
+    const { latitude, longitude } = coords;
+
+    // 거리 계산 (이전 위치가 있을 경우)
+    if (lastLocationRef.current && isRecording && !isPaused) {
+      const distance = calculateDistance(
+        lastLocationRef.current.latitude,
+        lastLocationRef.current.longitude,
+        latitude,
+        longitude
+      );
+
+      // 비정상적으로 큰 거리는 무시 (GPS 오류 방지, 100m 이상)
+      if (distance < 100) {
+        setTotalDistance((prev) => {
+          const newDistance = prev + distance;
+
+          // 페이스 계산 (recordingTime은 초 단위)
+          if (recordingTime > 0) {
+            const avgPace = calculatePace(newDistance, recordingTime);
+            setAveragePace(avgPace);
+
+            // 현재 페이스 (최근 100m 기준으로 계산)
+            if (newDistance >= 100) {
+              const recentTime = 10; // 대략 최근 10초 (간단한 추정)
+              const currPace = calculatePace(distance, recentTime);
+              setCurrentPace(currPace);
+            }
+          }
+
+          return newDistance;
+        });
+      }
+    }
+
+    // 현재 위치를 이전 위치로 저장
+    lastLocationRef.current = { latitude, longitude };
+
+    // 상태 업데이트
+    setLocation({ latitude, longitude });
+    setRouteCoordinates((prev) => [...prev, { latitude, longitude }]);
+
+    // 소켓으로 위치 전송
+    if (roomId) {
+      socketService.sendLocationUpdate(latitude, longitude);
+    }
+  };
+
+  // 기록 시작 핸들러 (백그라운드 위치 추적 사용)
   const handleStartRecord = async () => {
     try {
       setLoading(true);
@@ -201,29 +256,20 @@ export default function GamePlayScreen({ navigation, route }) {
       setCurrentRecordId(result.id);
       setIsRecording(true);
 
-      // 위치 추적 시작
-      const sub = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.High,
-          distanceInterval: 5, // 5미터마다 업데이트
-          timeInterval: 1000,
-        },
-        (newLocation) => {
-          const { latitude, longitude } = newLocation.coords;
+      // 통계 초기화
+      setTotalDistance(0);
+      setCurrentPace("--'--\"");
+      setAveragePace("--'--\"");
+      lastLocationRef.current = null;
 
-          // 상태 업데이트
-          setLocation(newLocation.coords);
-          setRouteCoordinates((prev) => [...prev, { latitude, longitude }]);
+      // 백그라운드 위치 추적 시작
+      const started = await BackgroundLocationService.startTracking(handleLocationUpdate);
 
-          // 소켓으로 위치 전송
-          if (roomId) {
-            socketService.sendLocationUpdate(latitude, longitude);
-          }
-        }
-      );
-      setSubscription(sub);
+      if (!started) {
+        Alert.alert('경고', '백그라운드 위치 추적을 시작할 수 없습니다. 앱이 열려 있을 때만 추적됩니다.');
+      }
 
-      Alert.alert('성공', '기록을 시작했습니다.');
+      Alert.alert('성공', '기록을 시작했습니다. 앱을 닫아도 백그라운드에서 계속 추적됩니다.');
     } catch (error) {
       Alert.alert('오류', error.message || '기록 시작에 실패했습니다.');
     } finally {
@@ -232,34 +278,22 @@ export default function GamePlayScreen({ navigation, route }) {
   };
 
   // 일시중단 핸들러 (팝업 없이 즉시 실행)
-  const handlePauseRecord = () => {
-    if (subscription) {
-      subscription.remove();
-      setSubscription(null);
-    }
+  const handlePauseRecord = async () => {
+    // 백그라운드 위치 추적 중지
+    await BackgroundLocationService.stopTracking();
     setIsPaused(true);
   };
 
   // 재개 핸들러
   const handleResumeRecord = async () => {
     try {
-      // 위치 추적 재시작
-      const sub = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.High,
-          distanceInterval: 5,
-          timeInterval: 1000,
-        },
-        (newLocation) => {
-          const { latitude, longitude } = newLocation.coords;
-          setLocation(newLocation.coords);
-          setRouteCoordinates((prev) => [...prev, { latitude, longitude }]);
-          if (roomId) {
-            socketService.sendLocationUpdate(latitude, longitude);
-          }
-        }
-      );
-      setSubscription(sub);
+      // 백그라운드 위치 추적 재시작
+      const started = await BackgroundLocationService.startTracking(handleLocationUpdate);
+
+      if (!started) {
+        Alert.alert('경고', '위치 추적을 재시작할 수 없습니다.');
+      }
+
       setIsPaused(false);
     } catch (error) {
       Alert.alert('오류', '재개에 실패했습니다.');
@@ -277,11 +311,8 @@ export default function GamePlayScreen({ navigation, route }) {
           try {
             setLoading(true);
 
-            // 위치 추적 중단
-            if (subscription) {
-              subscription.remove();
-              setSubscription(null);
-            }
+            // 백그라운드 위치 추적 중단
+            await BackgroundLocationService.stopTracking();
 
             // API 호출 (기록 저장)
             if (currentRecordId) {
@@ -353,12 +384,21 @@ export default function GamePlayScreen({ navigation, route }) {
       <SafeAreaView style={[styles.overlayContainer, { backgroundColor: 'transparent' }]} pointerEvents="box-none">
         {/* 상단 정보 패널 */}
         <View style={styles.overlayPanel} pointerEvents="none">
-          <View style={styles.timerContainer}>
-            <Text style={styles.timerText}>{formatDuration(recordingTime)}</Text>
+          {/* 왼쪽: 페이스 */}
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>페이스</Text>
+            <Text style={styles.statValue}>{averagePace}</Text>
           </View>
-          <View style={styles.statsContainer}>
-            <Text style={styles.statText}>A팀: {Object.values(ownedHexes).filter(x => x.team === 'A').length}</Text>
-            <Text style={styles.statText}>B팀: {Object.values(ownedHexes).filter(x => x.team === 'B').length}</Text>
+
+          {/* 중앙: 시간 */}
+          <View style={[styles.statBox, styles.centerStatBox]}>
+            <Text style={styles.statLabel}>시간</Text>
+            <Text style={[styles.statValue, styles.timeValue]}>{formatTime(recordingTime)}</Text>
+          </View>
+          {/* 오른쪽: 거리 */}
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>거리</Text>
+            <Text style={styles.statValue}>{formatDistance(totalDistance)}</Text>
           </View>
         </View>
 
@@ -439,29 +479,39 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     zIndex: 10,
   },
-  timerContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
+  statBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#003D7A',
+    alignItems: 'center',
+    minWidth: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  timerText: {
-    fontSize: 24,
+  centerStatBox: {
+    minWidth: 120,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statValue: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#003D7A',
   },
-  statsContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  statText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 4,
+  timeValue: {
+    fontSize: 24,
   },
   controlsContainer: {
     position: 'absolute',

@@ -52,31 +52,39 @@ export default function LandingScreen({ navigation }) {
     }
   };
 
-  // 상단 오른쪽 육각형 클러스터 (7개: 중앙 1개 파란색, 주변 6개 중 3개 파란색, 3개 주황색)
-  // 이미지와 정확히 일치하도록 배치
-  const hexSize = 30;
-  const hexSpacing = hexSize * 1.732; // √3 정확한 값
+  // 상단 오른쪽 육각형 클러스터 - 참고 이미지와 동일한 벌집 패턴
+  const hexSize = 28;
+  // 육각형 간 간격 (평평한 면이 위/아래로 향하는 경우)
+  const hexWidth = hexSize * 2; // 너비
+  const hexHeight = hexSize * 1.732; // 높이 (√3)
+  const horizSpacing = hexWidth * 0.75; // 수평 간격 (3/4 너비)
+  const vertSpacing = hexHeight * 0.5; // 수직 간격 (1/2 높이)
 
   // hexContainer 내부 기준 좌표
-  const hexContainerWidth = width * 0.35;
-  const hexContainerHeight = height * 0.25;
-  const hexClusterCenterX = hexContainerWidth * 0.65; // 컨테이너 내부 오른쪽
-  const hexClusterCenterY = hexContainerHeight * 0.5; // 컨테이너 내부 중앙
+  const hexContainerWidth = width * 0.4;
+  const hexContainerHeight = height * 0.22;
 
-  // 이미지 설명에 따르면: 왼쪽에 주황색, 중앙에 파란색들, 오른쪽에 주황색들
+  // 클러스터 중심점
+  const centerX = hexContainerWidth * 0.5;
+  const centerY = hexContainerHeight * 0.5;
+
+  // 참고 이미지 기준 벌집 패턴 (6개 + α)
+  // Row 0 (상단): 주황 - 파랑 - 파랑 - 주황
+  // Row 1 (중앙): 주황 (왼쪽 아래) - 주황 (오른쪽 아래)
+  // Row 2 (하단): 주황
   const hexagons = [
-    // 왼쪽: 주황색
-    { x: hexClusterCenterX - hexSpacing * 0.866, y: hexClusterCenterY, color: '#FF6B35' },
+    // Row 0 (상단 4개)
+    { x: centerX - horizSpacing * 1.5, y: centerY - vertSpacing, color: '#FF6B35' }, // 맨 왼쪽 주황
+    { x: centerX - horizSpacing * 0.5, y: centerY - vertSpacing, color: '#003D7A' }, // 왼쪽 파랑
+    { x: centerX + horizSpacing * 0.5, y: centerY - vertSpacing, color: '#003D7A' }, // 오른쪽 파랑
+    { x: centerX + horizSpacing * 1.5, y: centerY - vertSpacing, color: '#FF6B35' }, // 맨 오른쪽 주황
 
-    // 중앙: 파란색들
-    { x: hexClusterCenterX, y: hexClusterCenterY, color: '#003D7A' }, // 중앙
-    { x: hexClusterCenterX, y: hexClusterCenterY - hexSpacing, color: '#003D7A' }, // 위
-    { x: hexClusterCenterX, y: hexClusterCenterY + hexSpacing, color: '#003D7A' }, // 아래
+    // Row 1 (중앙 - 엇갈림)
+    { x: centerX - horizSpacing, y: centerY + vertSpacing * 0.5, color: '#FF6B35' }, // 왼쪽 주황
+    { x: centerX + horizSpacing, y: centerY + vertSpacing * 0.5, color: '#FF6B35' }, // 오른쪽 주황
 
-    // 오른쪽: 주황색들
-    { x: hexClusterCenterX + hexSpacing * 0.866, y: hexClusterCenterY, color: '#FF6B35' },
-    { x: hexClusterCenterX + hexSpacing * 0.866, y: hexClusterCenterY - hexSpacing * 0.5, color: '#FF6B35' },
-    { x: hexClusterCenterX + hexSpacing * 0.866, y: hexClusterCenterY + hexSpacing * 0.5, color: '#FF6B35' },
+    // Row 2 (하단)
+    { x: centerX, y: centerY + vertSpacing * 2, color: '#FF6B35' }, // 가운데 주황
   ];
 
   return (
@@ -164,9 +172,9 @@ const styles = StyleSheet.create({
   hexContainer: {
     position: 'absolute',
     top: 30,
-    right: 30,
-    width: width * 0.35,
-    height: height * 0.25,
+    right: 20,
+    width: width * 0.4,
+    height: height * 0.22,
     zIndex: 1,
   },
   titleContainer: {
