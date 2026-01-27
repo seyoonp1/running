@@ -216,13 +216,7 @@ export default function RoomDetailScreen({ navigation, route }) {
         {/* 방 정보 카드 */}
         <View style={styles.infoCard}>
           {/* 출석 버튼 */}
-          <TouchableOpacity
-            style={styles.attendanceButton}
-            onPress={handleShowAttendance}
-            disabled={actionLoading}
-          >
-            <Text style={styles.attendanceButtonText}>출석</Text>
-          </TouchableOpacity>
+          {/* 출석 버튼 제거됨 */}
 
           <Text style={styles.roomName}>{room.name}</Text>
           <Text style={styles.inviteCode}>초대 코드: {room.invite_code}</Text>

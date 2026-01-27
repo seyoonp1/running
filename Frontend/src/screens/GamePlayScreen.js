@@ -8,11 +8,17 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
+  Modal,
+  ScrollView,
+  Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import paintItemIcon from '../../assets/icons/paint item_icon.png';
 import GoogleMapView from '../components/GoogleMapView';
 import * as Location from 'expo-location';
 import { cellToBoundary } from 'h3-js';
 import { startRecord, stopRecord } from '../services/recordService';
+import { getAttendance } from '../services/roomService';
 import socketService from '../services/socketService';
 import BackgroundLocationService from '../services/BackgroundLocationService';
 import { calculateDistance, calculatePace, formatDistance, formatTime } from '../utils/gpsUtils';
@@ -44,6 +50,21 @@ export default function GamePlayScreen({ navigation, route }) {
   const [loading, setLoading] = useState(false);
   const [mapReady, setMapReady] = useState(false);
 
+  // Ref로 최신 상태 추적 (클로저 문제 해결)
+  const isRecordingRef = useRef(false);
+  const isPausedRef = useRef(false);
+  const recordingTimeRef = useRef(0);
+
+  // 상태 변경 시 ref도 함께 업데이트
+  const updateIsRecording = (value) => {
+    setIsRecording(value);
+    isRecordingRef.current = value;
+  };
+  const updateIsPaused = (value) => {
+    setIsPaused(value);
+    isPausedRef.current = value;
+  };
+
   // 위치 및 경로 상태 (테스트를 위해 서울시청 기본값 설정)
   const [location, setLocation] = useState({
     latitude: 37.5665,
@@ -61,6 +82,11 @@ export default function GamePlayScreen({ navigation, route }) {
   const [myTeam, setMyTeam] = useState(null); // 'A' or 'B'
   const [ownedHexes, setOwnedHexes] = useState({}); // { h3Id: { team: 'A', ownerId: '...' } }
   const [otherParticipants, setOtherParticipants] = useState({}); // { userId: { lat, lng, team } }
+
+  // 출석 상태
+  const [showAttendance, setShowAttendance] = useState(false);
+  const [attendanceData, setAttendanceData] = useState(null);
+  const [hasAcquiredHex, setHasAcquiredHex] = useState(false); // 땅 획득 여부 (도장용)
 
   // 1. 초기 설정 및 소켓 연결
   useEffect(() => {
@@ -91,6 +117,18 @@ export default function GamePlayScreen({ navigation, route }) {
 
     initGame();
 
+    // 초기 출석 상태 확인 (조용히)
+    const checkInitialAttendance = async () => {
+      try {
+        if (!roomId) return;
+        const data = await getAttendance(roomId);
+        setAttendanceData(data);
+      } catch (error) {
+        console.log('초기 출석 확인 실패:', error);
+      }
+    };
+    checkInitialAttendance();
+
     return () => {
       mounted = false;
       cleanup();
@@ -102,7 +140,11 @@ export default function GamePlayScreen({ navigation, route }) {
     let interval = null;
     if (isRecording && !isPaused) {
       interval = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
+        setRecordingTime((prev) => {
+          const newTime = prev + 1;
+          recordingTimeRef.current = newTime; // Ref도 업데이트
+          return newTime;
+        });
       }, 1000);
     }
     return () => {
@@ -169,6 +211,11 @@ export default function GamePlayScreen({ navigation, route }) {
         ...prev,
         [data.h3_id]: { team: data.team, ownerId: data.user_id }
       }));
+
+      // 내가 땅을 먹었으면 도장 상태 업데이트
+      if (data.user_id === user?.id) {
+        setHasAcquiredHex(true);
+      }
     });
 
     // 다른 참가자 위치 업데이트
@@ -201,8 +248,13 @@ export default function GamePlayScreen({ navigation, route }) {
   const handleLocationUpdate = (coords) => {
     const { latitude, longitude } = coords;
 
+    // Ref를 사용하여 최신 상태 확인 (클로저 문제 해결)
+    const recording = isRecordingRef.current;
+    const paused = isPausedRef.current;
+    const currentRecordingTime = recordingTimeRef.current;
+
     // 거리 계산 (이전 위치가 있을 경우)
-    if (lastLocationRef.current && isRecording && !isPaused) {
+    if (lastLocationRef.current && recording && !paused) {
       const distance = calculateDistance(
         lastLocationRef.current.latitude,
         lastLocationRef.current.longitude,
@@ -211,23 +263,24 @@ export default function GamePlayScreen({ navigation, route }) {
       );
 
       // 비정상적으로 큰 거리는 무시 (GPS 오류 방지, 100m 이상)
-      if (distance < 100) {
+      if (distance < 100 && distance > 0.5) { // 최소 0.5m 이상이어야 계산
         setTotalDistance((prev) => {
           const newDistance = prev + distance;
 
           // 페이스 계산 (recordingTime은 초 단위)
-          if (recordingTime > 0) {
-            const avgPace = calculatePace(newDistance, recordingTime);
+          if (currentRecordingTime > 0) {
+            const avgPace = calculatePace(newDistance, currentRecordingTime);
             setAveragePace(avgPace);
 
-            // 현재 페이스 (최근 100m 기준으로 계산)
-            if (newDistance >= 100) {
-              const recentTime = 10; // 대략 최근 10초 (간단한 추정)
-              const currPace = calculatePace(distance, recentTime);
+            // 현재 페이스 (최근 10초 기준으로 계산)
+            if (newDistance >= 10) {
+              const recentTime = 5; // 대략 최근 5초
+              const currPace = calculatePace(distance * 2, recentTime); // 대략적인 추정
               setCurrentPace(currPace);
             }
           }
 
+          console.log(`🏃 [거리 계산] +${distance.toFixed(2)}m | 총: ${newDistance.toFixed(2)}m`);
           return newDistance;
         });
       }
@@ -254,7 +307,7 @@ export default function GamePlayScreen({ navigation, route }) {
       // API 호출
       const result = await startRecord(roomId);
       setCurrentRecordId(result.id);
-      setIsRecording(true);
+      updateIsRecording(true);
 
       // 통계 초기화
       setTotalDistance(0);
@@ -281,7 +334,7 @@ export default function GamePlayScreen({ navigation, route }) {
   const handlePauseRecord = async () => {
     // 백그라운드 위치 추적 중지
     await BackgroundLocationService.stopTracking();
-    setIsPaused(true);
+    updateIsPaused(true);
   };
 
   // 재개 핸들러
@@ -294,7 +347,7 @@ export default function GamePlayScreen({ navigation, route }) {
         Alert.alert('경고', '위치 추적을 재시작할 수 없습니다.');
       }
 
-      setIsPaused(false);
+      updateIsPaused(false);
     } catch (error) {
       Alert.alert('오류', '재개에 실패했습니다.');
     }
@@ -320,8 +373,8 @@ export default function GamePlayScreen({ navigation, route }) {
             }
 
             // 상태 초기화
-            setIsRecording(false);
-            setIsPaused(false);
+            updateIsRecording(false);
+            updateIsPaused(false);
             setCurrentRecordId(null);
             setRecordingTime(0);
             setRouteCoordinates([]);
@@ -364,6 +417,27 @@ export default function GamePlayScreen({ navigation, route }) {
     // 필요 시 카메라 변경 이벤트 처리
   };
 
+  // 출석 확인 핸들러
+  const handleShowAttendance = async () => {
+    try {
+      setLoading(true);
+      const data = await getAttendance(roomId);
+      setAttendanceData(data);
+      setShowAttendance(true);
+    } catch (error) {
+      Alert.alert('오류', '출석 현황을 불러올 수 없습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 출석일 계산 (실시간 반영)
+  const displayDays = attendanceData ? (
+    (!attendanceData.attended_today && hasAcquiredHex)
+      ? attendanceData.consecutive_days + 1
+      : attendanceData.consecutive_days
+  ) : 0;
+
   return (
     <View style={styles.container}>
       {/* 지도 영역 (전체 배경) */}
@@ -405,43 +479,132 @@ export default function GamePlayScreen({ navigation, route }) {
         {/* 하단 컨트롤러 */}
         <View style={styles.controlsContainer} pointerEvents="box-none">
           {!isRecording ? (
+            // 기록 시작 전 (재생 버튼)
             <TouchableOpacity
-              style={[styles.controlButton, styles.startButton]}
+              style={styles.iconButton}
               onPress={handleStartRecord}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>기록 시작</Text>}
+              {loading ? (
+                <ActivityIndicator color="black" size="large" />
+              ) : (
+                <Ionicons name="play" size={36} color="black" style={{ marginLeft: 4 }} />
+              )}
             </TouchableOpacity>
           ) : (
+            // 기록 중 (정지 버튼 + 일시정지/재개 버튼)
             <View style={styles.recordingControls} pointerEvents="box-none">
-              {isPaused ? (
-                <TouchableOpacity
-                  style={[styles.controlButton, styles.resumeButton]}
-                  onPress={handleResumeRecord}
-                  disabled={loading}
-                >
-                  <Text style={styles.buttonText}>재개</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.controlButton, styles.pauseButton]}
-                  onPress={handlePauseRecord}
-                  disabled={loading}
-                >
-                  <Text style={styles.buttonText}>일시중단</Text>
-                </TouchableOpacity>
-              )}
+              {/* 완전 종료 버튼 (네모 아이콘, 위쪽) */}
               <TouchableOpacity
-                style={[styles.controlButton, styles.stopButton]}
+                style={styles.iconButton}
                 onPress={handleCompleteStop}
                 disabled={loading}
               >
-                {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>완전종료</Text>}
+                {loading ? (
+                  <ActivityIndicator color="black" size="large" />
+                ) : (
+                  <Ionicons name="square" size={28} color="black" />
+                )}
+              </TouchableOpacity>
+
+              {/* 일시정지/재개 버튼 (아래쪽) */}
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={isPaused ? handleResumeRecord : handlePauseRecord}
+                disabled={loading}
+              >
+                <Ionicons
+                  name={isPaused ? "play" : "pause"}
+                  size={36}
+                  color="black"
+                  style={isPaused ? { marginLeft: 4 } : {}}
+                />
               </TouchableOpacity>
             </View>
           )}
         </View>
+
+        {/* 출석 버튼 (왼쪽 하단) */}
+        <View style={styles.attendanceButtonContainer} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[styles.attendanceButton, { backgroundColor: 'rgba(224, 255, 230, 0.8)' }]}
+            onPress={handleShowAttendance}
+            disabled={loading}
+          >
+            {/* 기본 텍스트 (출석) */}
+            <Text style={styles.attendanceButtonText}>출석</Text>
+
+            {/* 도장 (조건부 표시: 이미 출석했거나 방금 땅을 먹었을 때) */}
+            {(hasAcquiredHex || attendanceData?.attended_today) && (
+              <Image
+                source={paintItemIcon}
+                style={{
+                  width: 90,
+                  height: 90,
+                  resizeMode: 'contain',
+                  position: 'absolute', // 겹쳐서 표시
+                  opacity: 1
+                }}
+              />
+            )}
+          </TouchableOpacity>
+
+          {/* 연속 출석일 라벨 (버튼 옆) */}
+          {attendanceData && (
+            <View style={styles.daysLabelContainer}>
+              <Text style={styles.daysLabelText}>연속 {displayDays}일차</Text>
+            </View>
+          )}
+        </View>
       </SafeAreaView>
+
+      {/* 출석 현황 모달 */}
+      <Modal visible={showAttendance} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>출석 현황</Text>
+            {attendanceData ? (
+              <ScrollView style={styles.attendanceContent}>
+                <View style={styles.attendanceInfo}>
+                  <Text style={styles.attendanceLabel}>연속 출석일:</Text>
+                  <Text style={styles.attendanceValue}>{attendanceData.consecutive_days}일</Text>
+                </View>
+                <View style={styles.attendanceInfo}>
+                  <Text style={styles.attendanceLabel}>오늘 출석:</Text>
+                  <Text style={styles.attendanceValue}>
+                    {attendanceData.attended_today ? '✓ 완료' : '✗ 미완료'}
+                  </Text>
+                </View>
+                <View style={styles.attendanceInfo}>
+                  <Text style={styles.attendanceLabel}>다음 보상:</Text>
+                  <Text style={styles.attendanceValue}>
+                    {attendanceData.next_reward}일 연속 시 +{attendanceData.next_reward} 페인트볼
+                  </Text>
+                </View>
+                {attendanceData.reward_info && (
+                  <View style={styles.rewardInfo}>
+                    <Text style={styles.rewardTitle}>보상 정보</Text>
+                    {attendanceData.reward_info.rewards?.map((reward, index) => (
+                      <Text key={index} style={styles.rewardItem}>
+                        {reward.days}일 연속: +{reward.paintballs} 페인트볼
+                        {reward.note && ` (${reward.note})`}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+              </ScrollView>
+            ) : (
+              <ActivityIndicator size="large" color="#003D7A" />
+            )}
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowAttendance(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>닫기</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -515,50 +678,135 @@ const styles = StyleSheet.create({
   },
   controlsContainer: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 20,
     left: 0,
     right: 0,
     alignItems: 'center',
     backgroundColor: 'transparent', // 투명하게 설정
   },
   recordingControls: {
-    width: width * 0.8,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  controlButton: {
-    flex: 1,
-    paddingVertical: 18,
-    borderRadius: 30,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    gap: 15, // 버튼 간 간격
   },
-  startButton: {
-    backgroundColor: '#003D7A',
+  iconButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: 'black',
   },
-  pauseButton: {
-    backgroundColor: '#FFA500',
-  },
-  resumeButton: {
-    backgroundColor: '#4CAF50',
-  },
-  stopButton: {
-    backgroundColor: '#FF6B35',
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
+  // 개별 스타일 제거 (공통 iconButton 사용)
+  // 마커 스타일 유지
   participantMarker: {
     width: 16,
     height: 16,
     borderRadius: 8,
     borderWidth: 2,
     borderColor: '#fff',
+  },
+  attendanceButtonContainer: {
+    position: 'absolute',
+    bottom: 30,
+    left: 10,
+    flexDirection: 'row', // 가로 배치
+    alignItems: 'center', // 수직 중앙 정렬
+  },
+  daysLabelContainer: {
+    marginLeft: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+  },
+  daysLabelText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  attendanceButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#4CAF50', // 연두색 테두리
+  },
+  attendanceButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2E7D32', // 진한 녹색 텍스트
+  },
+  // 모달 스타일
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000000',
+    marginBottom: 8,
+  },
+  attendanceContent: {
+    marginVertical: 10,
+  },
+  attendanceInfo: {
+    flexDirection: 'row',
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  attendanceLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#666',
+    width: 100,
+  },
+  attendanceValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000000',
+    flex: 1,
+  },
+  rewardInfo: {
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+  },
+  rewardTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#003D7A',
+  },
+  rewardItem: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 4,
+  },
+  modalCloseButton: {
+    marginTop: 10,
+    padding: 12,
+    alignItems: 'center',
+    backgroundColor: '#003D7A',
+    borderRadius: 8,
+  },
+  modalCloseButtonText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
 });
