@@ -4,7 +4,7 @@ ASGI config for hexgame backend.
 import os
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.auth import AuthMiddlewareStack
+from apps.realtime.middleware import JWTAuthMiddlewareStack
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.development')
 
@@ -17,7 +17,7 @@ from apps.realtime import routing as realtime_routing
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
-    "websocket": AuthMiddlewareStack(
+    "websocket": JWTAuthMiddlewareStack(
         URLRouter(
             realtime_routing.websocket_urlpatterns
         )
