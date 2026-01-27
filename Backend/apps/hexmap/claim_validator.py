@@ -1,9 +1,12 @@
 """
 Hex claim validation logic
 """
+import logging
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.core.cache import cache
+
+logger = logging.getLogger(__name__)
 
 
 class ClaimValidator:
@@ -41,14 +44,26 @@ class ClaimValidator:
         samples = self.get_samples()
         
         if len(samples) < self.min_samples:
+            logger.debug(
+                "Claim check: insufficient samples. participant=%s samples=%d required=%d",
+                self.participant_id,
+                len(samples),
+                self.min_samples,
+            )
             return None
         
         # Check last N samples
         recent_samples = samples[-self.min_samples:]
         recent_h3_ids = [s['h3_id'] for s in recent_samples]
+        unique_hexes = set(recent_h3_ids)
         
         # All samples must be in the same hex
-        if len(set(recent_h3_ids)) != 1:
+        if len(unique_hexes) != 1:
+            logger.debug(
+                "Claim check: samples in different hexes. participant=%s hexes=%s",
+                self.participant_id,
+                list(unique_hexes),
+            )
             return None
         
         # Check dwell time
@@ -57,9 +72,23 @@ class ClaimValidator:
         time_span = (last_timestamp - first_timestamp).total_seconds()
         
         if time_span < self.min_dwell_sec:
+            logger.debug(
+                "Claim check: insufficient dwell time. participant=%s h3_id=%s time_span=%.2f required=%.2f",
+                self.participant_id,
+                recent_h3_ids[0],
+                time_span,
+                self.min_dwell_sec,
+            )
             return None
         
         # Claim is valid
+        logger.info(
+            "Claim check: VALID. participant=%s h3_id=%s samples=%d time_span=%.2f",
+            self.participant_id,
+            recent_h3_ids[0],
+            len(recent_samples),
+            time_span,
+        )
         return recent_h3_ids[0]
     
     def get_samples(self) -> list:

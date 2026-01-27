@@ -4,13 +4,16 @@ Room과 Participant 모델 사용 (Session 모델 제거됨)
 """
 import json
 import math
+import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.utils import timezone
 from apps.rooms.models import Room, Participant, RunningRecord
-from apps.hexmap.h3_utils import latlng_to_h3, is_h3_in_bounds
+from apps.hexmap.h3_utils import latlng_to_h3, is_h3_in_bounds, h3_to_latlng
 from apps.hexmap.claim_validator import ClaimValidator
 from apps.hexmap.loop_detector import LoopDetector
+
+logger = logging.getLogger(__name__)
 
 
 def haversine_distance(lat1, lng1, lat2, lng2):
@@ -157,6 +160,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
             logger.info(f"Location broadcast sent successfully")
             
             # 기록 중인 경우에만 점령 처리 및 거리 계산
+            if not participant.is_recording:
+                logger.debug(
+                    "Location update skipped (not recording): participant=%s h3_id=%s",
+                    self.participant_id,
+                    h3_id,
+                )
+            
             if participant.is_recording:
                 # 거리 계산 (GPS 위치 기반)
                 if self.last_position is not None:
@@ -184,20 +194,49 @@ class RoomConsumer(AsyncWebsocketConsumer):
         # 클레임 검증기에 샘플 추가
         self.claim_validator.add_location_sample(lat, lng, h3_id, timestamp)
         
+        # 샘플 상태 로그 (주기적으로만 출력)
+        samples = self.claim_validator.get_samples()
+        if len(samples) > 0 and len(samples) % 3 == 0:  # 3개마다 한 번씩
+            logger.debug(
+                "Location sample added: participant=%s h3_id=%s total_samples=%d lat=%.6f lng=%.6f",
+                self.participant_id,
+                h3_id,
+                len(samples),
+                lat,
+                lng,
+            )
+        
         # 클레임 검증
         claimed_h3_id = self.claim_validator.check_claim()
         
         if claimed_h3_id:
+            logger.info(
+                "Claim candidate: participant=%s h3_id=%s",
+                self.participant_id,
+                claimed_h3_id,
+            )
             await self.process_claim(claimed_h3_id, participant, room)
     
     async def process_claim(self, h3_id, participant, room):
         """점령 처리"""
         # 게임 영역 검증: 영역 밖 hex는 점령 불가
         game_area_bounds = room.game_area.bounds if room.game_area else None
+        
+        # H3 hex의 중심 좌표 확인
+        try:
+            hex_lat, hex_lng = h3_to_latlng(h3_id)
+        except Exception:
+            hex_lat, hex_lng = None, None
+        
         if not is_h3_in_bounds(h3_id, game_area_bounds):
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.debug(f"Hex {h3_id} is outside game area bounds, skipping claim")
+            logger.warning(
+                "Claim rejected (out of bounds): participant=%s h3_id=%s hex_center=(%.6f, %.6f) bounds=%s",
+                self.participant_id,
+                h3_id,
+                hex_lat or 0.0,
+                hex_lng or 0.0,
+                bool(game_area_bounds),
+            )
             return
         
         team = participant.team
