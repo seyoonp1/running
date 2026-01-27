@@ -13,10 +13,24 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.running.app"
+      "bundleIdentifier": "com.running.app",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      },
+      "config": {
+        "googleMapsApiKey": "AIzaSyBkU-bc6EHGYJuJvP-etBHo38dvPTFMX_M"
+      }
     },
     "android": {
-      "package": "com.running.app"
-    }
+      "package": "com.running.app",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBkU-bc6EHGYJuJvP-etBHo38dvPTFMX_M"
+        }
+      }
+    },
+    "plugins": []
   }
 }
