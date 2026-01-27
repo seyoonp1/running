@@ -1,10 +1,11 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// API 기본 URL (개발 환경)
+// API 기본 URL
+// 프로덕션 서버: http://44.196.254.97
 const API_BASE_URL = __DEV__ 
-  ? 'http://localhost:8000/api' 
-  : 'https://your-production-api.com/api';
+  ? 'http://44.196.254.97/api'  // 개발 환경에서도 프로덕션 서버 사용
+  : 'http://44.196.254.97/api';  // 프로덕션 서버
 
 // Axios 인스턴스 생성
 const api = axios.create({
