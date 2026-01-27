@@ -65,6 +65,7 @@ class RoomConsumer(AsyncWebsocketConsumer):
         self.last_position = None  # 마지막 위치 {'lat': float, 'lng': float}
         self.total_distance = 0.0  # 누적 거리 (미터)
         self.recording_start_time = None  # 기록 시작 시간
+        self.last_claimed_h3_id = None  # 마지막으로 점령한 hex ID
         
         # 그룹 참가
         await self.channel_layer.group_add(self.group_name, self.channel_name)
@@ -272,6 +273,15 @@ class RoomConsumer(AsyncWebsocketConsumer):
             existing,
         )
         
+        # 같은 hex를 연속으로 점령하려고 하면 게이지 추가하지 않음
+        if self.last_claimed_h3_id == h3_id:
+            logger.debug(
+                "Claim ignored (same hex, consecutive claim): participant=%s h3_id=%s",
+                self.participant_id,
+                h3_id,
+            )
+            return  # 게이지도 추가하지 않고 점령도 하지 않음
+        
         gauge_to_add = 0
         claimed = False
         
@@ -339,6 +349,10 @@ class RoomConsumer(AsyncWebsocketConsumer):
             
             # 점수 업데이트 브로드캐스트
             await self.broadcast_score_update(room)
+        
+        # 게이지를 채우든 땅을 먹든하면 last_claimed_h3_id 업데이트
+        if gauge_to_add > 0 or claimed:
+            self.last_claimed_h3_id = h3_id
     
     async def handle_paintball(self, data):
         """페인트볼 사용 처리"""
