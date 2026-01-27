@@ -11,13 +11,14 @@ WebSocket 실시간 위치 전파 테스트 스크립트
 
 테스트 시나리오:
 1. 두 명의 사용자 생성 (user1, user2)
-2. 방 생성 (user1이 방장, start_date는 오늘 날짜로 설정)
-3. user1이 user2를 방에 초대
-4. user2가 우편함에서 초대 수락
-5. 방장이 게임 시작 (start_date 검증: 오늘 날짜가 start_date보다 같거나 이후여야 함)
-6. 두 사용자가 WebSocket 연결
-7. user1이 위치 업데이트 → user2가 수신 확인
-8. user1이 기록 시작 → 땅 점령 → user2가 이벤트 수신 확인
+2. user1이 user2에게 친구 요청 → 수락
+3. 방 생성 (user1이 방장, start_date는 오늘 날짜로 설정)
+4. user1이 user2를 방에 초대
+5. user2가 우편함에서 초대 수락
+6. 방장이 게임 시작 (start_date 검증: 오늘 날짜가 start_date보다 같거나 이후여야 함)
+7. 두 사용자가 WebSocket 연결
+8. user1이 위치 업데이트 → user2가 수신 확인
+9. user1이 기록 시작 → 땅 점령 → user2가 이벤트 수신 확인
 """
 
 import asyncio
@@ -92,6 +93,48 @@ class TestUser:
         }
 
 
+def accept_friend_request(user):
+    """우편함에서 친구 요청을 찾아 수락"""
+    response = requests.get(
+        f"{BASE_URL}/api/mailbox/",
+        headers=user.get_headers()
+    )
+
+    if response.status_code != 200:
+        print(f"❌ 친구 요청 우편함 조회 실패: {response.text}")
+        return False
+
+    mailbox_data = response.json()
+    mails = mailbox_data.get('results', [])
+
+    friend_request_mail = None
+    for mail in mails:
+        if mail.get('mail_type') == 'friend_request' and mail.get('status') in ['unread', 'read']:
+            friend_request_mail = mail
+            break
+
+    if not friend_request_mail:
+        print("❌ 친구 요청 메일을 찾을 수 없습니다.")
+        return False
+
+    mailbox_id = friend_request_mail.get('id')
+    print(f"✅ 친구 요청 메일 확인: {mailbox_id}")
+
+    response = requests.post(
+        f"{BASE_URL}/api/mailbox/{mailbox_id}/respond/",
+        headers=user.get_headers(),
+        json={"accept": True}
+    )
+
+    if response.status_code not in [200, 201]:
+        print(f"❌ 친구 요청 수락 실패: {response.text}")
+        return False
+
+    accept_data = response.json()
+    print(f"✅ 친구 요청 수락 성공: {accept_data.get('message')}")
+    return True
+
+
 async def test_websocket_broadcast():
     """WebSocket 브로드캐스트 테스트"""
     print("\n" + "="*60)
@@ -120,8 +163,25 @@ async def test_websocket_broadcast():
         print("❌ User2 설정 실패")
         return False
     
-    # 2. 게임 구역 조회
-    print("\n📌 Step 2: 게임 구역 조회")
+    # 2. 친구 요청 (user1 -> user2)
+    print("\n📌 Step 2: 친구 요청 및 수락")
+    response = requests.post(
+        f"{BASE_URL}/api/friends/request/",
+        headers=user1.get_headers(),
+        json={"user_id": str(user2.user_id)}
+    )
+
+    if response.status_code not in [200, 201]:
+        print(f"❌ 친구 요청 실패: {response.text}")
+        return False
+
+    print("✅ 친구 요청 전송 성공")
+
+    if not accept_friend_request(user2):
+        return False
+
+    # 3. 게임 구역 조회
+    print("\n📌 Step 3: 게임 구역 조회")
     response = requests.get(
         f"{BASE_URL}/api/game-areas/",
         headers=user1.get_headers()
@@ -140,8 +200,8 @@ async def test_websocket_broadcast():
     game_area_id = game_areas['results'][0]['id']
     print(f"✅ 게임 구역 선택: {game_areas['results'][0]['name']}")
     
-    # 3. 방 생성 (user1이 방장, start_date는 오늘 날짜로 설정)
-    print("\n📌 Step 3: 방 생성")
+    # 4. 방 생성 (user1이 방장, start_date는 오늘 날짜로 설정)
+    print("\n📌 Step 4: 방 생성")
     today = date.today().isoformat()
     end_date = (date.today().replace(day=28) if date.today().day <= 28 else date.today().replace(month=date.today().month+1, day=1)).isoformat()
     
@@ -167,8 +227,8 @@ async def test_websocket_broadcast():
     print(f"✅ 방 생성 성공: {room_id}")
     print(f"   시작 날짜: {start_date}")
     
-    # 4. user1이 user2를 방에 초대
-    print("\n📌 Step 4: User1이 User2를 방에 초대")
+    # 5. user1이 user2를 방에 초대
+    print("\n📌 Step 5: User1이 User2를 방에 초대")
     response = requests.post(
         f"{BASE_URL}/api/rooms/{room_id}/invite/",
         headers=user1.get_headers(),
@@ -181,8 +241,8 @@ async def test_websocket_broadcast():
     
     print("✅ User2 초대 성공")
     
-    # 5. user2가 우편함에서 초대 확인 및 수락
-    print("\n📌 Step 5: User2가 우편함에서 초대 확인")
+    # 6. user2가 우편함에서 초대 확인 및 수락
+    print("\n📌 Step 6: User2가 우편함에서 초대 확인")
     response = requests.get(
         f"{BASE_URL}/api/mailbox/",
         headers=user2.get_headers()
@@ -210,7 +270,7 @@ async def test_websocket_broadcast():
     print(f"✅ 방 초대 메일 확인: {mailbox_id}")
     
     # 초대 수락
-    print("\n📌 Step 6: User2가 초대 수락")
+    print("\n📌 Step 7: User2가 초대 수락")
     response = requests.post(
         f"{BASE_URL}/api/mailbox/{mailbox_id}/respond/",
         headers=user2.get_headers(),
@@ -226,8 +286,8 @@ async def test_websocket_broadcast():
     if 'participant' in accept_data:
         print(f"   배정된 팀: {accept_data['participant'].get('team')}")
     
-    # 7. 방장이 게임 시작 (start_date 검증: 오늘 날짜가 start_date보다 같거나 이후여야 함)
-    print("\n📌 Step 7: 방장이 게임 시작")
+    # 8. 방장이 게임 시작 (start_date 검증: 오늘 날짜가 start_date보다 같거나 이후여야 함)
+    print("\n📌 Step 8: 방장이 게임 시작")
     print(f"   시작 날짜 검증: 오늘({today}) >= 시작 날짜({start_date})")
     
     response = requests.post(
@@ -244,8 +304,8 @@ async def test_websocket_broadcast():
     
     print("✅ 게임 시작 성공")
     
-    # 8. WebSocket 연결
-    print("\n📌 Step 8: WebSocket 연결")
+    # 9. WebSocket 연결
+    print("\n📌 Step 9: WebSocket 연결")
     
     user1_ws_url = f"{WS_URL}/ws/room/{room_id}/?token={user1.access_token}"
     user2_ws_url = f"{WS_URL}/ws/room/{room_id}/?token={user2.access_token}"
@@ -256,13 +316,18 @@ async def test_websocket_broadcast():
                 print("✅ 두 사용자 WebSocket 연결 성공")
                 
                 # 연결 확인 메시지 수신
-                msg1 = await asyncio.wait_for(ws1.recv(), timeout=5)
-                msg2 = await asyncio.wait_for(ws2.recv(), timeout=5)
-                print(f"   User1 연결 확인: {json.loads(msg1)['type']}")
-                print(f"   User2 연결 확인: {json.loads(msg2)['type']}")
+                msg1 = json.loads(await asyncio.wait_for(ws1.recv(), timeout=5))
+                msg2 = json.loads(await asyncio.wait_for(ws2.recv(), timeout=5))
+                participant_map = {
+                    msg1.get("participant_id"): "user1",
+                    msg2.get("participant_id"): "user2",
+                }
+                print(f"   User1 연결 확인: {msg1.get('type')}")
+                print(f"   User2 연결 확인: {msg2.get('type')}")
+                print(f"   participant_id 매핑: {participant_map}")
                 
-                # 9. User1이 기록 시작
-                print("\n📌 Step 9: User1 기록 시작")
+                # 10. User1이 기록 시작
+                print("\n📌 Step 10: User1 기록 시작")
                 await ws1.send(json.dumps({
                     "type": "start_recording"
                 }))
@@ -274,8 +339,8 @@ async def test_websocket_broadcast():
                 except asyncio.TimeoutError:
                     print("   기록 시작 응답 타임아웃 (정상일 수 있음)")
                 
-                # 10. User1이 위치 업데이트 전송
-                print("\n📌 Step 10: User1 위치 업데이트 전송")
+                # 11. User1이 위치 업데이트 전송
+                print("\n📌 Step 11: User1 위치 업데이트 전송")
                 test_locations = [
                     {"lat": 37.5665, "lng": 126.9780},  # 서울시청 근처
                     {"lat": 37.5666, "lng": 126.9781},
@@ -293,15 +358,20 @@ async def test_websocket_broadcast():
                     print(f"   📍 위치 {i+1} 전송: {loc}")
                     await asyncio.sleep(0.5)
                 
-                # 11. User2가 브로드캐스트 수신 확인
-                print("\n📌 Step 11: User2 브로드캐스트 수신 확인")
+                # 12. User2가 브로드캐스트 수신 확인
+                print("\n📌 Step 12: User2 브로드캐스트 수신 확인")
                 received_count = 0
                 try:
                     while True:
                         msg = await asyncio.wait_for(ws2.recv(), timeout=3)
                         data = json.loads(msg)
                         received_count += 1
-                        print(f"   📨 User2 수신 [{received_count}]: type={data.get('type')}")
+                        sender = participant_map.get(data.get("participant_id"), "unknown")
+                        print(
+                            f"   📨 User2 수신 [{received_count}]: "
+                            f"type={data.get('type')}, "
+                            f"from={sender}({data.get('participant_id')})"
+                        )
                         
                         if data.get('type') == 'location_update':
                             print(f"      → 위치: ({data.get('lat')}, {data.get('lng')})")
@@ -318,8 +388,8 @@ async def test_websocket_broadcast():
                 else:
                     print("\n⚠️ 브로드캐스트 메시지 수신 없음")
                 
-                # 12. User1 기록 종료
-                print("\n📌 Step 12: User1 기록 종료")
+                # 13. User1 기록 종료
+                print("\n📌 Step 13: User1 기록 종료")
                 await ws1.send(json.dumps({
                     "type": "stop_recording"
                 }))
