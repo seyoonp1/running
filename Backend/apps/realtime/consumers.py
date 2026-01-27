@@ -4,13 +4,16 @@ Room과 Participant 모델 사용 (Session 모델 제거됨)
 """
 import json
 import math
+import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.utils import timezone
 from apps.rooms.models import Room, Participant, RunningRecord
-from apps.hexmap.h3_utils import latlng_to_h3, is_h3_in_bounds
+from apps.hexmap.h3_utils import latlng_to_h3, is_h3_in_bounds, h3_to_latlng
 from apps.hexmap.claim_validator import ClaimValidator
 from apps.hexmap.loop_detector import LoopDetector
+
+logger = logging.getLogger(__name__)
 
 
 def haversine_distance(lat1, lng1, lat2, lng2):
@@ -157,6 +160,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
             logger.info(f"Location broadcast sent successfully")
             
             # 기록 중인 경우에만 점령 처리 및 거리 계산
+            if not participant.is_recording:
+                logger.debug(
+                    "Location update skipped (not recording): participant=%s h3_id=%s",
+                    self.participant_id,
+                    h3_id,
+                )
+            
             if participant.is_recording:
                 # 거리 계산 (GPS 위치 기반)
                 if self.last_position is not None:
@@ -184,20 +194,67 @@ class RoomConsumer(AsyncWebsocketConsumer):
         # 클레임 검증기에 샘플 추가
         self.claim_validator.add_location_sample(lat, lng, h3_id, timestamp)
         
+        # 샘플 상태 로그 (주기적으로만 출력)
+        samples = self.claim_validator.get_samples()
+        if len(samples) > 0 and len(samples) % 3 == 0:  # 3개마다 한 번씩
+            logger.debug(
+                "Location sample added: participant=%s h3_id=%s total_samples=%d lat=%.6f lng=%.6f",
+                self.participant_id,
+                h3_id,
+                len(samples),
+                lat,
+                lng,
+            )
+        
         # 클레임 검증
         claimed_h3_id = self.claim_validator.check_claim()
         
         if claimed_h3_id:
+            logger.info(
+                "Claim candidate: participant=%s h3_id=%s",
+                self.participant_id,
+                claimed_h3_id,
+            )
             await self.process_claim(claimed_h3_id, participant, room)
     
     async def process_claim(self, h3_id, participant, room):
         """점령 처리"""
+        logger.debug(
+            "process_claim called: participant=%s h3_id=%s",
+            self.participant_id,
+            h3_id,
+        )
+        
+        # Race condition 방지: room을 다시 조회하여 최신 ownerships 가져오기
+        room = await self.get_room()
+        if not room:
+            logger.error("Room not found in process_claim: room_id=%s", self.room_id)
+            return
+        
         # 게임 영역 검증: 영역 밖 hex는 점령 불가
         game_area_bounds = room.game_area.bounds if room.game_area else None
+        
+        # H3 hex의 중심 좌표 확인
+        try:
+            hex_lat, hex_lng = h3_to_latlng(h3_id)
+        except Exception as e:
+            logger.error(
+                "Failed to get hex center: participant=%s h3_id=%s error=%s",
+                self.participant_id,
+                h3_id,
+                str(e),
+            )
+            hex_lat, hex_lng = None, None
+        
         if not is_h3_in_bounds(h3_id, game_area_bounds):
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.debug(f"Hex {h3_id} is outside game area bounds, skipping claim")
+            logger.warning(
+                "Claim rejected (out of bounds): participant=%s h3_id=%s hex_center=(%.6f, %.6f) bounds=%s",
+                self.participant_id,
+                h3_id,
+                hex_lat or 0.0,
+                hex_lng or 0.0,
+                bool(game_area_bounds),
+            )
             return
         
         team = participant.team
@@ -207,13 +264,29 @@ class RoomConsumer(AsyncWebsocketConsumer):
         current_ownerships = room.current_hex_ownerships or {}
         existing = current_ownerships.get(h3_id)
         
+        logger.debug(
+            "Claim processing: participant=%s h3_id=%s team=%s existing=%s",
+            self.participant_id,
+            h3_id,
+            team,
+            existing,
+        )
+        
         gauge_to_add = 0
         claimed = False
         
         if existing:
             if existing.get('team') == team:
-                # 같은 팀의 땅 → +60 게이지
+                # 같은 팀의 땅 → +60 게이지만 (user_id는 변경하지 않음, 점령으로 카운트되지 않음)
                 gauge_to_add = 60
+                logger.debug(
+                    "Claim ignored (same team): participant=%s h3_id=%s team=%s existing_user_id=%s",
+                    self.participant_id,
+                    h3_id,
+                    team,
+                    existing.get('user_id'),
+                )
+                # user_id를 변경하지 않으므로 원래 점령자가 계속 카운트됨
             else:
                 # 상대 팀 땅 점령
                 current_ownerships[h3_id] = {
@@ -237,6 +310,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
         
         # 점령 저장
         if claimed:
+            logger.info(
+                "Claim success: participant=%s h3_id=%s team=%s user_id=%s",
+                self.participant_id,
+                h3_id,
+                team,
+                user_id,
+            )
             await self.save_hex_ownerships(room, current_ownerships)
             
             # 출석 체크 (다른 hex로 이동)
@@ -515,7 +595,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
     
     @database_sync_to_async
     def save_hex_ownerships(self, room, ownerships):
-        room.current_hex_ownerships = ownerships
+        """점령 상태 저장 (race condition 방지를 위해 최신 상태를 다시 읽어서 merge)"""
+        # 최신 상태를 다시 조회
+        room.refresh_from_db()
+        # 기존 ownerships와 새 ownerships를 merge
+        existing_ownerships = room.current_hex_ownerships or {}
+        merged_ownerships = {**existing_ownerships, **ownerships}
+        room.current_hex_ownerships = merged_ownerships
         room.save(update_fields=['current_hex_ownerships'])
     
     @database_sync_to_async

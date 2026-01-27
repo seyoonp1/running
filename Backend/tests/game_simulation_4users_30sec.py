@@ -43,26 +43,39 @@ SPEED_MPS = 3.0  # 초당 3미터 (약 10.8 km/h)
 
 def get_bounds_center(bounds: Dict) -> Optional[tuple]:
     """게임 구역 bounds의 중심 좌표 (lat, lng) 계산"""
-    if not bounds:
+    # 빈 dict나 None 체크
+    if not bounds or (isinstance(bounds, dict) and len(bounds) == 0):
         return None
 
+    if not isinstance(bounds, dict):
+        return None
+
+    # GeoJSON Polygon 형식 확인
     coords = None
-    if isinstance(bounds, dict):
-        if bounds.get("type") == "Polygon":
-            coords = bounds.get("coordinates")
-        else:
-            coords = bounds.get("coordinates")
+    if bounds.get("type") == "Polygon":
+        coords = bounds.get("coordinates")
+    elif "coordinates" in bounds:
+        # type이 없어도 coordinates가 있으면 사용
+        coords = bounds.get("coordinates")
 
-    if not coords or not coords[0]:
+    if not coords:
         return None
 
+    # coordinates는 리스트여야 함
+    if not isinstance(coords, list) or len(coords) == 0:
+        return None
+
+    # 첫 번째 ring (외곽 경계) 사용
     ring = coords[0]
+    if not isinstance(ring, list) or len(ring) == 0:
+        return None
+
     lat_sum = 0.0
     lng_sum = 0.0
     count = 0
     for point in ring:
         if isinstance(point, list) and len(point) >= 2:
-            lng_sum += point[0]
+            lng_sum += point[0]  # GeoJSON은 [lng, lat] 순서
             lat_sum += point[1]
             count += 1
 
@@ -413,14 +426,22 @@ async def test_game_simulation_30sec():
 
     game_area_id = results[0]["id"]
     print(f"✅ 게임 구역 선택: {results[0]['name']}")
-    selected_bounds = results[0]['bounds']['coordinates']
+    selected_bounds = results[0].get("bounds", {})
+    
+    # 디버깅: bounds 구조 확인
+    print(f"🔍 Debug - bounds 타입: {type(selected_bounds)}, 값: {selected_bounds}")
+    if selected_bounds:
+        print(f"🔍 Debug - bounds keys: {selected_bounds.keys() if isinstance(selected_bounds, dict) else 'N/A'}")
+    
     center = get_bounds_center(selected_bounds)
     if center:
-        base_lat, base_lng = center
-        print(f"✅ 게임 구역 중심 좌표 사용: {base_lat:.6f}, {base_lng:.6f}")
+        base_lat, base_lng = center  # (위도, 경도) 순서
+        print(f"✅ 게임 구역 중심 좌표 사용: 위도={base_lat:.6f}, 경도={base_lng:.6f}")
     else:
-        base_lat, base_lng = 37.5665, 126.9780  # 서울 시청 근처
+        base_lat, base_lng = 36.364838, 127.367953  # 대전 근처
         print("⚠️ 게임 구역 bounds 없음: 기본 좌표(서울) 사용")
+        if selected_bounds:
+            print(f"   💡 bounds는 있지만 파싱 실패: {selected_bounds}")
 
     # 5. 방 생성 (start_date는 현재 시간으로 설정)
     print("\n📌 Step 5: 방 생성")
