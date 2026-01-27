@@ -1,27 +1,8 @@
-# 프로덕션 배포용 Docker Compose 설정
+# 프로덕션 배포용 Docker Compose 설정 (RDS 사용)
 # nginx 리버스 프록시 포함
 # 로컬 개발은 docker-compose.dev.yml 사용
 
 services:
-  # PostgreSQL Database (RDS 사용 시 제거 가능)
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: ${DB_NAME:-hexgame}
-      POSTGRES_USER: ${DB_USER:-hexgame}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-hexgame}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-hexgame}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-
   # Redis for caching and pub/sub
   redis:
     image: redis:7-alpine
@@ -34,6 +15,7 @@ services:
       retries: 5
     networks:
       - app-network
+    restart: unless-stopped
 
   # Django API Server
   django:
@@ -45,34 +27,82 @@ services:
     volumes:
       - .:/app
       - static_volume:/app/staticfiles
+    ports:
+      - "8000:8000"
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.production
-      - DB_NAME=${DB_NAME:-hexgame}
-      - DB_USER=${DB_USER:-hexgame}
-      - DB_PASSWORD=${DB_PASSWORD:-hexgame}
-      - DB_HOST=${DB_HOST:-db}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT:-5432}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - SECRET_KEY=${SECRET_KEY:-django-insecure-change-me-in-production}
       - DEBUG=False
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-*}
       - CORS_ALLOW_ALL_ORIGINS=True
-      # SSL 설정 (HTTPS 적용 후 True로 변경)
       - SECURE_SSL_REDIRECT=False
       - SESSION_COOKIE_SECURE=False
       - CSRF_COOKIE_SECURE=False
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
       - app-network
     restart: unless-stopped
 
-  # Socket.IO 서버는 MVP에서 사용하지 않음 (Django Channels 사용)
-  # WebSocket은 Django Channels를 통해 ws://{host}/ws/room/{room_id}/ 로 접근
+  # Celery Worker
+  celery_worker:
+    build: .
+    command: celery -A config worker -l info
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-5432}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-change-me-in-production}
+      - DEBUG=False
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-*}
+      - CORS_ALLOW_ALL_ORIGINS=True
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Celery Beat Scheduler
+  celery_beat:
+    build: .
+    command: celery -A config beat -l info
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-5432}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-change-me-in-production}
+      - DEBUG=False
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-*}
+      - CORS_ALLOW_ALL_ORIGINS=True
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
 
   # Nginx Reverse Proxy
   nginx:
@@ -83,8 +113,6 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - static_volume:/app/staticfiles:ro
-      # SSL 인증서 (프로덕션용)
-      # - ./nginx/ssl:/etc/letsencrypt:ro
     depends_on:
       - django
     networks:
@@ -92,7 +120,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
   static_volume:
 
 networks:

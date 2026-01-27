@@ -17,6 +17,9 @@ urlpatterns = [
     
     # 리더보드 API (예정)
     path('api/leaderboard/', include('apps.leaderboard.urls')),
+
+    # 랭킹 API
+    path('api/', include('apps.ranking.urls')),
 ]
 
 if settings.DEBUG:

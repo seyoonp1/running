@@ -13,6 +13,13 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    rating = models.IntegerField(default=1000, help_text='ELO 레이팅')
+    games_played = models.IntegerField(default=0, help_text='총 게임 수')
+    games_won = models.IntegerField(default=0, help_text='승리 횟수')
+    games_lost = models.IntegerField(default=0, help_text='패배 횟수')
+    games_draw = models.IntegerField(default=0, help_text='무승부 횟수')
+    mvp_count = models.IntegerField(default=0, help_text='MVP 횟수')
+    highest_rating = models.IntegerField(default=1000, help_text='최고 레이팅')
     
     # AbstractUser에서 불필요한 필드 제거
     first_name = None

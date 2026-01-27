@@ -82,6 +82,24 @@ class RoomDetailSerializer(serializers.ModelSerializer):
 class RoomCreateSerializer(serializers.ModelSerializer):
     """방 생성 Serializer"""
     game_area_id = serializers.UUIDField(write_only=True)
+    start_date = serializers.DateTimeField(
+        input_formats=[
+            '%Y-%m-%dT%H:%M',
+            '%Y-%m-%d %H:%M',
+            '%Y-%m-%dT%H:%M:%S',
+            '%Y-%m-%d %H:%M:%S',
+            'iso-8601',
+        ]
+    )
+    end_date = serializers.DateTimeField(
+        input_formats=[
+            '%Y-%m-%dT%H:%M',
+            '%Y-%m-%d %H:%M',
+            '%Y-%m-%dT%H:%M:%S',
+            '%Y-%m-%d %H:%M:%S',
+            'iso-8601',
+        ]
+    )
     
     class Meta:
         model = Room
@@ -107,7 +125,7 @@ class RoomCreateSerializer(serializers.ModelSerializer):
         start_date = attrs.get('start_date')
         end_date = attrs.get('end_date')
         if start_date and end_date and start_date > end_date:
-            raise serializers.ValidationError('시작 날짜가 종료 날짜보다 늦을 수 없습니다.')
+            raise serializers.ValidationError('시작 일시가 종료 일시보다 늦을 수 없습니다.')
         return attrs
     
     def create(self, validated_data):
@@ -137,9 +155,11 @@ class RunningRecordStartSerializer(serializers.Serializer):
 
 
 class RunningRecordStopSerializer(serializers.Serializer):
-    """러닝 기록 종료 Serializer"""
-    duration_seconds = serializers.IntegerField(min_value=0)
-    distance_meters = serializers.FloatField(min_value=0)
+    """러닝 기록 종료 Serializer (선택적 필드 - 백엔드에서 계산)"""
+    # 모든 필드는 선택적: 백엔드에서 자동 계산
+    # 프론트엔드에서 제공하면 해당 값 사용, 없으면 백엔드 계산값 사용
+    duration_seconds = serializers.IntegerField(min_value=0, required=False)
+    distance_meters = serializers.FloatField(min_value=0, required=False)
 
 
 class RunningStatsSerializer(serializers.Serializer):

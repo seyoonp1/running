@@ -27,7 +27,25 @@ Table users {
   created_at timestamp [default: `now()`]
   updated_at timestamp [default: `now()`]
   
-  Note: '사용자 (프로필: 이메일, 가입날짜)'
+  // 랭킹 시스템
+  rating int [default: 1000, note: 'ELO 레이팅 (기본값: 1000)']
+  games_played int [default: 0, note: '총 게임 수']
+  games_won int [default: 0, note: '승리 횟수']
+  games_lost int [default: 0, note: '패배 횟수']
+  games_draw int [default: 0, note: '무승부 횟수']
+  mvp_count int [default: 0, note: 'MVP 횟수']
+  highest_rating int [default: 1000, note: '최고 레이팅']
+  
+  indexes {
+    rating [name: 'idx_users_rating']
+  }
+  
+  Note: '''
+    사용자 (프로필: 이메일, 가입날짜)
+    - 랭킹 시스템: ELO 레이팅 기반
+    - 게임 종료 시 팀 승패에 따라 레이팅 변동
+    - MVP(최다 점령자)는 추가 보너스 점수 획득
+  '''
 }
 
 // ==================== 게임 구역 ====================
@@ -68,8 +86,8 @@ Table rooms {
   total_participants int [not null, default: 4, note: '총 인원수 (짝수)']
   
   // 일정
-  start_date date [not null, note: '게임 시작 날짜']
-  end_date date [not null, note: '게임 종료 날짜']
+  start_date timestamp [not null, note: '게임 시작 일시']
+  end_date timestamp [not null, note: '게임 종료 일시']
   
   // 게임 영역 (미리 지정된 구역 선택)
   game_area_id uuid [ref: > game_areas.id, not null, note: '선택한 게임 구역']
@@ -133,6 +151,11 @@ Table participants {
   last_h3_id varchar(20) [null, note: '마지막 H3 ID']
   last_location_at timestamp [null]
   
+  // 게임 결과 통계 (게임 종료 시 저장)
+  hexes_claimed int [default: 0, note: '점령한 땅 수']
+  rating_change int [default: 0, note: '레이팅 변동']
+  is_mvp boolean [default: false, note: 'MVP 여부']
+  
   joined_at timestamp [default: `now()`]
   
   indexes {
@@ -149,6 +172,7 @@ Table participants {
     - is_recording: 시작 버튼을 눌러 기록 중인 상태
     - 게이지가 100이 차면 페인트볼 +1
     - 페인트볼 3개 ↔ 슈퍼 페인트볼 1개 교환 가능
+    - 게임 종료 시 hexes_claimed, rating_change, is_mvp 저장
   '''
 }
 

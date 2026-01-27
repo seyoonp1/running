@@ -76,7 +76,14 @@ def me(request):
         'id': str(user.id),
         'username': user.username,
         'email': user.email,
-        'created_at': user.created_at
+        'created_at': user.created_at,
+        'rating': user.rating,
+        'games_played': user.games_played,
+        'games_won': user.games_won,
+        'games_lost': user.games_lost,
+        'games_draw': user.games_draw,
+        'mvp_count': user.mvp_count,
+        'highest_rating': user.highest_rating
     })
 
 

@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'apps.realtime',
     'apps.hexmap',
     'apps.leaderboard',
+    'apps.ranking',
     'apps.debugtools',
 ]
 
@@ -158,6 +159,19 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# Celery Configuration
+_celery_redis_host = os.environ.get('REDIS_HOST', 'localhost')
+_celery_redis_port = os.environ.get('REDIS_PORT', '6379')
+CELERY_BROKER_URL = os.environ.get(
+    'CELERY_BROKER_URL',
+    f"redis://{_celery_redis_host}:{_celery_redis_port}/0",
+)
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
 
 # H3 Configuration
 H3_DEFAULT_RESOLUTION = int(os.environ.get('H3_DEFAULT_RESOLUTION', 8))

@@ -58,7 +58,7 @@ python manage.py runserver
 1. **방 API > 방 생성** 선택
 2. Body 확인:
    - `game_area_id`는 자동으로 환경 변수에서 가져옴
-   - `start_date`, `end_date`는 오늘 이후 날짜로 설정
+   - `start_date`, `end_date`는 현재 시각 이후 일시로 설정
    - `total_participants`는 짝수로 설정 (예: 4)
 3. Send 클릭
 4. 201 응답 확인
@@ -145,7 +145,7 @@ python manage.py runserver
 ## 5. 주의사항
 
 ### 날짜 형식
-- `start_date`, `end_date`는 `YYYY-MM-DD` 형식
+- `start_date`, `end_date`는 `YYYY-MM-DDTHH:mm` 형식
 - 오늘 이후 날짜여야 함
 
 ### 팀 정원

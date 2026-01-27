@@ -105,65 +105,79 @@ class RoomConsumer(AsyncWebsocketConsumer):
     
     async def handle_location_update(self, data):
         """위치 업데이트 처리"""
-        lat = data.get('lat')
-        lng = data.get('lng')
-        accuracy = data.get('accuracy', 0)
-        speed = data.get('speed', 0)
-        timestamp = timezone.now()
+        import logging
+        logger = logging.getLogger(__name__)
         
-        if lat is None or lng is None:
-            return
-        
-        # 방 정보 가져오기
-        room = await self.get_room()
-        if not room or room.status != 'active':
-            return
-        
-        # 참가자 가져오기
-        participant = await self.get_participant()
-        if not participant:
-            return
-        
-        # H3 ID 계산
-        resolution = room.h3_resolution
-        h3_id = latlng_to_h3(lat, lng, resolution)
-        
-        # 위치 업데이트
-        await self.update_participant_location(lat, lng, h3_id, timestamp)
-        
-        # 위치 브로드캐스트
-        await self.channel_layer.group_send(
-            self.group_name,
-            {
-                'type': 'location_update',
-                'participant_id': self.participant_id,
-                'lat': lat,
-                'lng': lng,
-                'h3_id': h3_id,
-                'timestamp': timestamp.isoformat()
-            }
-        )
-        
-        # 기록 중인 경우에만 점령 처리 및 거리 계산
-        if participant.is_recording:
-            # 거리 계산 (GPS 위치 기반)
-            if self.last_position is not None:
-                distance = haversine_distance(
-                    self.last_position['lat'], self.last_position['lng'],
-                    lat, lng
-                )
+        try:
+            lat = data.get('lat')
+            lng = data.get('lng')
+            accuracy = data.get('accuracy', 0)
+            speed = data.get('speed', 0)
+            timestamp = timezone.now()
+            
+            if lat is None or lng is None:
+                logger.warning(f"Location update missing lat/lng: {data}")
+                return
+            
+            # 방 정보 가져오기
+            room = await self.get_room()
+            if not room:
+                logger.warning(f"Room not found: {self.room_id}")
+                return
+            if room.status != 'active':
+                logger.warning(f"Room not active: {self.room_id}, status={room.status}")
+                return
+            
+            # 참가자 가져오기
+            participant = await self.get_participant()
+            if not participant:
+                logger.warning(f"Participant not found for user in room {self.room_id}")
+                return
+            
+            # H3 ID 계산
+            resolution = room.h3_resolution
+            h3_id = latlng_to_h3(lat, lng, resolution)
+            
+            # 위치 업데이트
+            await self.update_participant_location(lat, lng, h3_id, timestamp)
+            
+            # 위치 브로드캐스트
+            logger.info(f"Broadcasting location update to group {self.group_name}")
+            await self.channel_layer.group_send(
+                self.group_name,
+                {
+                    'type': 'location_update',
+                    'participant_id': self.participant_id,
+                    'lat': lat,
+                    'lng': lng,
+                    'h3_id': h3_id,
+                    'timestamp': timestamp.isoformat()
+                }
+            )
+            logger.info(f"Location broadcast sent successfully")
+            
+            # 기록 중인 경우에만 점령 처리 및 거리 계산
+            if participant.is_recording:
+                # 거리 계산 (GPS 위치 기반)
+                if self.last_position is not None:
+                    distance = haversine_distance(
+                        self.last_position['lat'], self.last_position['lng'],
+                        lat, lng
+                    )
+                    
+                    # 이상값 필터링 (순간 이동 방지)
+                    # 속도가 시속 50km 이상이면 무시 (약 14m/s)
+                    MAX_SPEED_MPS = 14.0
+                    time_diff = 1.0  # 기본 1초 (실제로는 이전 timestamp와 비교 필요)
+                    if distance / time_diff <= MAX_SPEED_MPS:
+                        self.total_distance += distance
                 
-                # 이상값 필터링 (순간 이동 방지)
-                # 속도가 시속 50km 이상이면 무시 (약 14m/s)
-                MAX_SPEED_MPS = 14.0
-                time_diff = 1.0  # 기본 1초 (실제로는 이전 timestamp와 비교 필요)
-                if distance / time_diff <= MAX_SPEED_MPS:
-                    self.total_distance += distance
-            
-            self.last_position = {'lat': lat, 'lng': lng}
-            
-            # 점령 로직 처리
-            await self.process_claim_logic(lat, lng, h3_id, timestamp, participant, room)
+                self.last_position = {'lat': lat, 'lng': lng}
+                
+                # 점령 로직 처리
+                await self.process_claim_logic(lat, lng, h3_id, timestamp, participant, room)
+        except Exception as e:
+            logger.error(f"handle_location_update error: {e}", exc_info=True)
     
     async def process_claim_logic(self, lat, lng, h3_id, timestamp, participant, room):
         """점령 로직 처리"""
@@ -321,18 +335,10 @@ class RoomConsumer(AsyncWebsocketConsumer):
         self.recording_start_time = timezone.now()
         
         # 기록 시작
-        await database_sync_to_async(lambda: (
-            setattr(participant, 'is_recording', True),
-            participant.save(update_fields=['is_recording'])
-        )[-1])()
+        await self.set_participant_recording(participant, True)
         
         # 러닝 기록 생성
-        record = await database_sync_to_async(RunningRecord.objects.create)(
-            user=participant.user,
-            room=room,
-            participant=participant,
-            started_at=self.recording_start_time
-        )
+        record = await self.create_running_record(participant, room, self.recording_start_time)
         
         await self.send(text_data=json.dumps({
             'type': 'recording_started',
@@ -342,57 +348,55 @@ class RoomConsumer(AsyncWebsocketConsumer):
     
     async def handle_stop_recording(self, data):
         """기록 종료 처리"""
-        participant = await self.get_participant()
-        
-        if not participant or not participant.is_recording:
-            return
-        
-        # 백엔드에서 계산한 값 사용
-        ended_at = timezone.now()
-        
-        # 시간 계산 (백엔드에서 계산)
-        if self.recording_start_time:
-            duration_seconds = int((ended_at - self.recording_start_time).total_seconds())
-        else:
-            # recording_start_time이 없으면 0 (정상적인 경우 발생하지 않음)
-            duration_seconds = 0
-        
-        # 거리: 백엔드에서 계산한 값 사용
-        distance_meters = self.total_distance
-        
-        # 기록 종료
-        await database_sync_to_async(lambda: (
-            setattr(participant, 'is_recording', False),
-            participant.save(update_fields=['is_recording'])
-        )[-1])()
-        
-        # 마지막 러닝 기록 업데이트
-        record = await database_sync_to_async(
-            lambda: RunningRecord.objects.filter(
-                participant=participant,
-                ended_at__isnull=True
-            ).order_by('-started_at').first()
-        )()
-        
-        if record:
-            record.duration_seconds = duration_seconds
-            record.distance_meters = distance_meters
-            record.ended_at = ended_at
-            record.calculate_pace()
-            await database_sync_to_async(record.save)()
+        try:
+            participant = await self.get_participant()
             
+            if not participant or not participant.is_recording:
+                return
+            
+            # 백엔드에서 계산한 값 사용
+            ended_at = timezone.now()
+            
+            # 시간 계산 (백엔드에서 계산)
+            if self.recording_start_time:
+                duration_seconds = int((ended_at - self.recording_start_time).total_seconds())
+            else:
+                # recording_start_time이 없으면 0 (정상적인 경우 발생하지 않음)
+                duration_seconds = 0
+            
+            # 거리: 백엔드에서 계산한 값 사용
+            distance_meters = self.total_distance
+            
+            # 기록 종료
+            await self.set_participant_recording(participant, False)
+            
+            # 마지막 러닝 기록 업데이트
+            record = await self.get_latest_running_record(participant)
+            
+            if record:
+                # update_running_record에서 계산된 값을 반환받아 사용
+                result = await self.update_running_record(record, duration_seconds, distance_meters, ended_at)
+                
+                await self.send(text_data=json.dumps({
+                    'type': 'recording_stopped',
+                    'record_id': str(record.id),
+                    'duration_seconds': duration_seconds,
+                    'distance_meters': round(distance_meters, 2),
+                    'avg_pace_seconds_per_km': result.get('avg_pace_seconds_per_km')
+                }))
+            
+            # 거리 계산 변수 초기화
+            self.last_position = None
+            self.total_distance = 0.0
+            self.recording_start_time = None
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"handle_stop_recording error: {e}", exc_info=True)
             await self.send(text_data=json.dumps({
-                'type': 'recording_stopped',
-                'record_id': str(record.id),
-                'duration_seconds': record.duration_seconds,
-                'distance_meters': round(record.distance_meters, 2),
-                'avg_pace_seconds_per_km': record.avg_pace_seconds_per_km
+                'type': 'error',
+                'message': f'기록 종료 중 오류가 발생했습니다: {str(e)}'
             }))
-        
-        # 거리 계산 변수 초기화
-        self.last_position = None
-        self.total_distance = 0.0
-        self.recording_start_time = None
     
     async def broadcast_score_update(self, room):
         """점수 업데이트 브로드캐스트"""
@@ -416,7 +420,8 @@ class RoomConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_room(self):
         try:
-            return Room.objects.get(id=self.room_id)
+            # select_related로 game_area를 미리 로드하여 비동기 컨텍스트에서 lazy loading 방지
+            return Room.objects.select_related('game_area').get(id=self.room_id)
         except Room.DoesNotExist:
             return None
     
@@ -438,6 +443,46 @@ class RoomConsumer(AsyncWebsocketConsumer):
             participant.save(update_fields=['last_lat', 'last_lng', 'last_h3_id', 'last_location_at'])
         except Participant.DoesNotExist:
             pass
+    
+    @database_sync_to_async
+    def set_participant_recording(self, participant, is_recording):
+        """참가자 기록 상태 변경"""
+        participant.is_recording = is_recording
+        participant.save(update_fields=['is_recording'])
+    
+    @database_sync_to_async
+    def create_running_record(self, participant, room, started_at):
+        """러닝 기록 생성"""
+        return RunningRecord.objects.create(
+            user=participant.user,
+            room=room,
+            participant=participant,
+            started_at=started_at
+        )
+    
+    @database_sync_to_async
+    def get_latest_running_record(self, participant):
+        """가장 최근의 종료되지 않은 러닝 기록 조회"""
+        return RunningRecord.objects.filter(
+            participant=participant,
+            ended_at__isnull=True
+        ).order_by('-started_at').first()
+    
+    @database_sync_to_async
+    def update_running_record(self, record, duration_seconds, distance_meters, ended_at):
+        """러닝 기록 업데이트 - 업데이트된 값을 반환"""
+        record.duration_seconds = duration_seconds
+        record.distance_meters = distance_meters
+        record.ended_at = ended_at
+        record.calculate_pace()
+        record.save()
+        
+        # 반환할 값들을 딕셔너리로 반환 (비동기 컨텍스트에서 안전하게 사용)
+        return {
+            'duration_seconds': record.duration_seconds,
+            'distance_meters': record.distance_meters,
+            'avg_pace_seconds_per_km': record.avg_pace_seconds_per_km
+        }
     
     @database_sync_to_async
     def add_gauge(self, participant, amount):
