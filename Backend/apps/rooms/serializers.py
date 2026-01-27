@@ -22,9 +22,10 @@ class ParticipantSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'team', 'is_host', 'is_recording',
             'paintball_count', 'super_paintball_count', 'paintball_gauge',
+            'hexes_claimed', 'rating_change', 'is_mvp',
             'consecutive_attendance_days', 'joined_at'
         ]
-        read_only_fields = ['id', 'user', 'joined_at']
+        read_only_fields = ['id', 'user', 'joined_at', 'hexes_claimed', 'rating_change', 'is_mvp']
 
 
 class RoomListSerializer(serializers.ModelSerializer):

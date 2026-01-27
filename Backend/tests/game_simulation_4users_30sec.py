@@ -445,10 +445,19 @@ async def test_game_simulation_30sec():
 
     # 5. 방 생성 (start_date는 현재 시간으로 설정)
     print("\n📌 Step 5: 방 생성")
-    now = datetime.now().replace(second=0, microsecond=0)
-    end_at = now + timedelta(days=30)
-    start_date = now.isoformat(timespec='minutes')
-    end_date = end_at.isoformat(timespec='minutes')
+    # KST 시간을 명시적으로 사용
+    from datetime import timezone as tz
+    KST = tz(timedelta(hours=9))
+    now_kst = datetime.now(KST)
+    # start_date는 현재 KST 시간 (바로 시작 가능)
+    # end_date는 게임 시간 + 여유 시간으로 설정 (서버가 자동으로 처리)
+    # 충분한 여유: 방 생성/초대/시작까지 약 30초 + 게임 시간 + 마진 30초
+    end_at_kst = now_kst + timedelta(seconds=GAME_DURATION_SECONDS + 60)
+    start_date = now_kst.isoformat(timespec='seconds')
+    end_date = end_at_kst.isoformat(timespec='seconds')
+    print(f"   현재 KST 시간: {now_kst.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   end_date (KST): {end_at_kst.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   서버가 {end_date} 시간에 자동으로 게임 종료 처리합니다")
 
     response = requests.post(
         f"{BASE_URL}/api/rooms/",
@@ -469,6 +478,7 @@ async def test_game_simulation_30sec():
     room_id = room_data.get("id")
     print(f"✅ 방 생성 성공: {room_id}")
     print(f"   시작 일시: {start_date}")
+    print(f"   종료 일시: {end_date}")
 
     # 6. user1이 user2~user4를 방에 초대
     print("\n📌 Step 6: User1이 User2~User4를 방에 초대")
@@ -576,8 +586,45 @@ async def test_game_simulation_30sec():
         return False
 
     # 11. 게임 결과 확인
-    print("\n📌 Step 11: 게임 결과 확인")
-    await asyncio.sleep(2)  # 결과 처리 대기
+    print("\n📌 Step 11: 게임 종료 대기 및 결과 확인")
+    # 서버의 room.end_date 시간까지 대기 (서버가 자동으로 게임 종료 처리)
+    response = requests.get(
+        f"{BASE_URL}/api/rooms/{room_id}/", headers=user1.get_headers()
+    )
+    if response.status_code == 200:
+        room_detail = response.json()
+        end_date_str = room_detail.get('end_date')
+        if end_date_str:
+            # end_date를 datetime으로 파싱 (ISO 8601 형식)
+            try:
+                # ISO 형식에서 'Z'를 '+00:00'로 변환 (Python datetime 호환)
+                end_date_normalized = end_date_str.replace('Z', '+00:00')
+                end_date_dt = datetime.fromisoformat(end_date_normalized)
+                
+                # 현재 시간 (KST)
+                KST = tz(timedelta(hours=9))
+                now = datetime.now(KST)
+                
+                # end_date까지 남은 시간 계산
+                time_until_end = (end_date_dt - now).total_seconds()
+                if time_until_end > 0:
+                    print(f"   서버 end_date: {end_date_str}")
+                    print(f"   게임 종료까지 대기 중... (약 {int(time_until_end)}초)")
+                    # end_date까지 대기 + Celery 태스크 처리 여유 시간 5초
+                    await asyncio.sleep(max(0, time_until_end) + 5)
+                else:
+                    print(f"   게임 종료 시간이 이미 지났습니다. 결과 확인 중...")
+                    await asyncio.sleep(5)  # Celery 태스크 처리 시간
+            except (ValueError, AttributeError) as e:
+                print(f"   ⚠️ end_date 파싱 실패: {e}. 기본 대기 시간 사용")
+                await asyncio.sleep(GAME_DURATION_SECONDS + 10)
+        else:
+            # end_date가 없으면 기본 대기 시간 사용
+            print(f"   ⚠️ end_date 정보를 가져올 수 없습니다. 기본 대기 시간 사용")
+            await asyncio.sleep(GAME_DURATION_SECONDS + 10)
+    else:
+        print(f"   ⚠️ 방 정보 조회 실패. 기본 대기 시간 사용")
+        await asyncio.sleep(GAME_DURATION_SECONDS + 10)
     
     response = requests.get(
         f"{BASE_URL}/api/rooms/{room_id}/", headers=user1.get_headers()

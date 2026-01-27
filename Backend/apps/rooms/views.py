@@ -1,6 +1,7 @@
 """
 Room views - MVP 버전
 """
+import logging
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -19,6 +20,9 @@ from .serializers import (
     RunningStatsSerializer
 )
 from apps.accounts.models import User, Friendship, Mailbox
+from apps.ranking.tasks import process_game_end
+
+logger = logging.getLogger(__name__)
 
 
 # ==================== 게임 구역 API ====================
@@ -370,12 +374,25 @@ def start_room(request, id):
     room.status = 'active'
     room.save(update_fields=['status'])
     
+    # 게임 종료 시간에 맞춰 종료 태스크 예약
+    eta = room.end_date
+    logger.info(
+        "Scheduling game end task: room=%s end_date=%s",
+        room.id,
+        eta.isoformat(),
+    )
+    process_game_end.apply_async(
+        args=[str(room.id)],
+        eta=eta,
+    )
+    
     return Response({
         'message': '게임이 시작되었습니다.',
         'room': {
             'id': str(room.id),
             'status': room.status,
-            'start_date': room.start_date
+            'start_date': room.start_date,
+            'end_date': room.end_date
         }
     })
 
