@@ -445,11 +445,17 @@ async def test_game_simulation_30sec():
 
     # 5. 방 생성 (start_date는 현재 시간으로 설정)
     print("\n📌 Step 5: 방 생성")
-    now = datetime.now().replace(second=0, microsecond=0)
-    # end_date는 게임 시작 후 GAME_DURATION_SECONDS초 후로 설정
-    end_at = now + timedelta(seconds=GAME_DURATION_SECONDS + 5)  # 5초 여유
-    start_date = now.isoformat(timespec='seconds')
-    end_date = end_at.isoformat(timespec='seconds')
+    # KST 시간을 명시적으로 사용
+    from datetime import timezone as tz
+    KST = tz(timedelta(hours=9))
+    now_kst = datetime.now(KST)
+    # start_date는 현재 KST 시간 (바로 시작 가능)
+    # end_date는 충분한 여유를 두고 설정: 방 생성/초대/시작까지 약 30초 + 게임 시간 30초 + 마진 60초
+    end_at_kst = now_kst + timedelta(seconds=GAME_DURATION_SECONDS + 120)  # 충분한 여유 (150초)
+    start_date = now_kst.isoformat(timespec='seconds')
+    end_date = end_at_kst.isoformat(timespec='seconds')
+    print(f"   현재 KST 시간: {now_kst.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   end_date (KST): {end_at_kst.strftime('%Y-%m-%d %H:%M:%S')}")
 
     response = requests.post(
         f"{BASE_URL}/api/rooms/",
@@ -580,7 +586,8 @@ async def test_game_simulation_30sec():
     # 11. 게임 결과 확인
     print("\n📌 Step 11: 게임 종료 대기 및 결과 확인")
     # end_date까지 대기 + Celery 태스크 처리 시간
-    wait_time = GAME_DURATION_SECONDS + 10  # 10초 여유
+    # end_date는 방 생성 시점 + 150초, GPS 이동에 30초 소요되었으므로 약 120초 더 대기
+    wait_time = GAME_DURATION_SECONDS + 120 + 10  # 160초 대기
     print(f"   게임 종료 태스크 실행 대기 중... ({wait_time}초)")
     await asyncio.sleep(wait_time)
     
