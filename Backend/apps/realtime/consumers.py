@@ -225,6 +225,12 @@ class RoomConsumer(AsyncWebsocketConsumer):
             h3_id,
         )
         
+        # Race condition 방지: room을 다시 조회하여 최신 ownerships 가져오기
+        room = await self.get_room()
+        if not room:
+            logger.error("Room not found in process_claim: room_id=%s", self.room_id)
+            return
+        
         # 게임 영역 검증: 영역 밖 hex는 점령 불가
         game_area_bounds = room.game_area.bounds if room.game_area else None
         
@@ -587,7 +593,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
     
     @database_sync_to_async
     def save_hex_ownerships(self, room, ownerships):
-        room.current_hex_ownerships = ownerships
+        """점령 상태 저장 (race condition 방지를 위해 최신 상태를 다시 읽어서 merge)"""
+        # 최신 상태를 다시 조회
+        room.refresh_from_db()
+        # 기존 ownerships와 새 ownerships를 merge
+        existing_ownerships = room.current_hex_ownerships or {}
+        merged_ownerships = {**existing_ownerships, **ownerships}
+        room.current_hex_ownerships = merged_ownerships
         room.save(update_fields=['current_hex_ownerships'])
     
     @database_sync_to_async
