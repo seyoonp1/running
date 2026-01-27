@@ -13,24 +13,48 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.delaykimm.splatrun", // "com.running.app"
+      "bundleIdentifier": "com.delaykimm.splatrun",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
-        }
+        },
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Running 앱이 백그라운드에서도 위치를 추적하여 경로를 기록합니다.",
+        "NSLocationAlwaysUsageDescription": "Running 앱이 백그라운드에서도 위치를 추적하여 경로를 기록합니다.",
+        "NSLocationWhenInUseUsageDescription": "Running 앱이 현재 위치를 사용하여 경로를 기록합니다.",
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ]
       },
       "config": {
         "googleMapsApiKey": "AIzaSyBkU-bc6EHGYJuJvP-etBHo38dvPTFMX_M"
       }
     },
     "android": {
-      "package": "com.delaykimm.splatrun", // "com.running.app",
+      "package": "com.delaykimm.splatrun",
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyBkU-bc6EHGYJuJvP-etBHo38dvPTFMX_M"
         }
-      }
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE"
+      ]
     },
-    "plugins": []
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Running 앱이 백그라운드에서도 위치를 추적하여 경로를 기록합니다.",
+          "locationAlwaysPermission": "Running 앱이 백그라운드에서도 위치를 추적하여 경로를 기록합니다.",
+          "locationWhenInUsePermission": "Running 앱이 현재 위치를 사용하여 경로를 기록합니다.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ]
+    ]
   }
 }
