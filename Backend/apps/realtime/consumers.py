@@ -8,7 +8,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.utils import timezone
 from apps.rooms.models import Room, Participant, RunningRecord
-from apps.hexmap.h3_utils import latlng_to_h3
+from apps.hexmap.h3_utils import latlng_to_h3, is_h3_in_bounds
 from apps.hexmap.claim_validator import ClaimValidator
 from apps.hexmap.loop_detector import LoopDetector
 
@@ -192,6 +192,14 @@ class RoomConsumer(AsyncWebsocketConsumer):
     
     async def process_claim(self, h3_id, participant, room):
         """점령 처리"""
+        # 게임 영역 검증: 영역 밖 hex는 점령 불가
+        game_area_bounds = room.game_area.bounds if room.game_area else None
+        if not is_h3_in_bounds(h3_id, game_area_bounds):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Hex {h3_id} is outside game area bounds, skipping claim")
+            return
+        
         team = participant.team
         user_id = str(participant.user_id)
         
@@ -268,6 +276,15 @@ class RoomConsumer(AsyncWebsocketConsumer):
         room = await self.get_room()
         
         if not participant or not room or room.status != 'active':
+            return
+        
+        # 게임 영역 검증: 영역 밖 hex는 페인트볼로도 점령 불가
+        game_area_bounds = room.game_area.bounds if room.game_area else None
+        if not is_h3_in_bounds(target_h3_id, game_area_bounds):
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': '게임 영역 밖의 hex는 점령할 수 없습니다.'
+            }))
             return
         
         # 페인트볼 사용
@@ -559,6 +576,9 @@ class RoomConsumer(AsyncWebsocketConsumer):
         if not room:
             return
         
+        # 게임 영역 bounds 가져오기
+        game_area_bounds = room.game_area.bounds if room.game_area else None
+        
         team = participant.team
         user_id = str(participant.user_id)
         
@@ -570,6 +590,10 @@ class RoomConsumer(AsyncWebsocketConsumer):
         for h3_id in interior_h3_ids:
             # 이미 점령된 hex는 건너뛰기
             if h3_id in current_ownerships:
+                continue
+            
+            # 게임 영역 밖 hex는 건너뛰기
+            if not is_h3_in_bounds(h3_id, game_area_bounds):
                 continue
             
             current_ownerships[h3_id] = {

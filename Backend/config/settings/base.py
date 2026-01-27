@@ -175,8 +175,8 @@ CELERY_TIMEZONE = TIME_ZONE
 
 # H3 Configuration
 H3_DEFAULT_RESOLUTION = int(os.environ.get('H3_DEFAULT_RESOLUTION', 8))
-H3_CLAIM_MIN_SAMPLES = int(os.environ.get('H3_CLAIM_MIN_SAMPLES', 2))
-H3_CLAIM_MIN_DWELL_SEC = int(os.environ.get('H3_CLAIM_MIN_DWELL_SEC', 30))
+H3_CLAIM_MIN_SAMPLES = int(os.environ.get('H3_CLAIM_MIN_SAMPLES', 5))  # 최소 5개 샘플 (1초 간격 = 4초 span)
+H3_CLAIM_MIN_DWELL_SEC = int(os.environ.get('H3_CLAIM_MIN_DWELL_SEC', 4))  # 4초 체류 시 점령
 H3_GPS_ERROR_RADIUS_M = float(os.environ.get('H3_GPS_ERROR_RADIUS_M', 25.0))
 
 # Game Configuration

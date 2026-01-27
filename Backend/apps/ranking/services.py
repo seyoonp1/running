@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.utils import timezone
 
-from apps.rooms.models import Participant
+from apps.rooms.models import Participant, RunningRecord
 
 
 class RankingService:
@@ -47,6 +47,25 @@ class RankingService:
             return None
         return top_participants[0]
 
+    def stop_active_records(self, room, participants):
+        """게임 종료 시 진행 중인 기록을 강제 종료"""
+        now = timezone.now()
+        # 종료되지 않은 기록들 가져오기
+        active_records = (
+            RunningRecord.objects.select_related('participant')
+            .filter(room=room, ended_at__isnull=True)
+        )
+
+        for record in active_records:
+            record.ended_at = now
+            record.duration_seconds = int((record.ended_at - record.started_at).total_seconds())
+            # distance_meters는 WebSocket에서 누적된 값이 있으면 유지
+            record.calculate_pace()
+            record.save(update_fields=['ended_at', 'duration_seconds', 'avg_pace_seconds_per_km'])
+
+        # 참가자 기록 상태도 모두 종료 처리
+        Participant.objects.filter(room=room, is_recording=True).update(is_recording=False)
+
     def process_game_end(self, room):
         with transaction.atomic():
             room.refresh_from_db()
@@ -60,6 +79,9 @@ class RankingService:
                 room.status = 'finished'
                 room.save(update_fields=['status'])
                 return None
+
+            # 게임 종료 시 진행 중인 기록 강제 종료
+            self.stop_active_records(room, participants)
 
             winner_team = room.determine_winner()
             hex_counts = self.compute_hex_counts(room)

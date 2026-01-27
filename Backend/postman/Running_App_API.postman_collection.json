@@ -11,6 +11,31 @@
 			"item": [
 				{
 					"name": "회원가입",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const jsonData = pm.response.json();",
+									"    // 실제 구현에서는 access/refresh 토큰도 반환",
+									"    if (jsonData.access) {",
+									"        pm.environment.set(\"access_token\", jsonData.access);",
+									"        pm.environment.set(\"refresh_token\", jsonData.refresh);",
+									"        pm.environment.set(\"user_id\", jsonData.id);",
+									"    }",
+									"    pm.test(\"회원가입 성공\", function () {",
+									"        pm.response.to.have.status(201);",
+									"        pm.expect(jsonData).to.have.property('id');",
+									"        pm.expect(jsonData).to.have.property('username');",
+									"        pm.expect(jsonData).to.have.property('email');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [
@@ -27,7 +52,8 @@
 							"raw": "{{base_url}}/api/auth/register/",
 							"host": ["{{base_url}}"],
 							"path": ["api", "auth", "register", ""]
-						}
+						},
+						"description": "회원가입\n- username, email, password 필수\n- 실제 구현에서는 access/refresh 토큰도 함께 반환 (명세서보다 개선됨)"
 					},
 					"response": []
 				},
@@ -112,6 +138,31 @@
 				},
 				{
 					"name": "내 정보 조회",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"내 정보 조회 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('username');",
+									"    pm.expect(jsonData).to.have.property('email');",
+									"    pm.expect(jsonData).to.have.property('created_at');",
+									"    pm.expect(jsonData).to.have.property('rating');",
+									"    pm.expect(jsonData).to.have.property('games_played');",
+									"    pm.expect(jsonData).to.have.property('games_won');",
+									"    pm.expect(jsonData).to.have.property('games_lost');",
+									"    pm.expect(jsonData).to.have.property('games_draw');",
+									"    pm.expect(jsonData).to.have.property('mvp_count');",
+									"    pm.expect(jsonData).to.have.property('highest_rating');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "GET",
 						"header": [
@@ -124,7 +175,8 @@
 							"raw": "{{base_url}}/api/auth/me/",
 							"host": ["{{base_url}}"],
 							"path": ["api", "auth", "me", ""]
-						}
+						},
+						"description": "내 정보 조회\n- 프로필 정보 (id, username, email, created_at)\n- 게임 통계 (rating, games_played, games_won, games_lost, games_draw)\n- MVP 및 최고 레이팅 (mvp_count, highest_rating)"
 					},
 					"response": []
 				}
@@ -412,6 +464,30 @@
 				},
 				{
 					"name": "친구 초대 (방 내에서)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// room_id 확인",
+									"const roomId = pm.environment.get('room_id');",
+									"if (!roomId) {",
+									"    pm.test('room_id 환경변수가 설정되지 않았습니다. 먼저 방을 생성하거나 방 목록에서 room_id를 설정하세요.', function () {",
+									"        pm.expect(roomId).to.not.be.undefined;",
+									"    });",
+									"}",
+									"",
+									"pm.test(\"친구 초대 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('message');",
+									"    pm.expect(jsonData.message).to.include('초대');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [
@@ -432,7 +508,8 @@
 							"raw": "{{base_url}}/api/rooms/{{room_id}}/invite/",
 							"host": ["{{base_url}}"],
 							"path": ["api", "rooms", "{{room_id}}", "invite", ""]
-						}
+						},
+						"description": "방 내에서 친구 초대\n\n⚠️ 중요:\n- URL 형식: POST /api/rooms/{room_id}/invite/\n- {{room_id}} 환경변수가 설정되어 있어야 함\n- 방의 참가자여야만 초대 가능\n- user_id: 초대할 사용자의 UUID\n\n사용 전 확인:\n1. 방 생성 또는 방 목록 조회로 {{room_id}} 설정\n2. {{user_id}} 환경변수 설정 (초대할 사용자 ID)"
 					},
 					"response": []
 				},
@@ -519,27 +596,51 @@
 				},
 				{
 					"name": "기록 종료",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"기록 종료 성공\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('duration_seconds');",
+									"    pm.expect(jsonData).to.have.property('distance_meters');",
+									"    pm.expect(jsonData).to.have.property('started_at');",
+									"    pm.expect(jsonData).to.have.property('ended_at');",
+									"    // 백엔드에서 자동 계산된 값 확인",
+									"    pm.expect(jsonData.duration_seconds).to.be.a('number');",
+									"    pm.expect(jsonData.distance_meters).to.be.a('number');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [
 							{
 								"key": "Authorization",
 								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"duration_seconds\": 1800,\n  \"distance_meters\": 5000\n}"
+							"raw": "{}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"url": {
 							"raw": "{{base_url}}/api/records/{{record_id}}/stop/",
 							"host": ["{{base_url}}"],
 							"path": ["api", "records", "{{record_id}}", "stop", ""]
-						}
+						},
+						"description": "기록 종료\n⚠️ 중요: 거리/시간은 백엔드에서 자동 계산됩니다.\n- duration_seconds: started_at ~ ended_at 차이로 계산\n- distance_meters: WebSocket GPS 데이터로 누적 계산 (Haversine 공식)\n- Request body는 선택사항 (빈 객체 {} 또는 생략 가능)\n- 비정상적인 속도(시속 50km 이상)는 거리 계산에서 제외"
 					},
 					"response": []
 				},
@@ -972,7 +1073,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"username\": \"{{user1_username}}\",\n  \"email\": \"user1@test.com\",\n  \"password\": \"testpass123\",\n  \"password_confirm\": \"testpass123\"\n}"
+							"raw": "{\n  \"username\": \"{{user1_username}}\",\n  \"email\": \"user1@test.com\",\n  \"password\": \"testpass123\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/register/",
@@ -1013,7 +1114,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"username\": \"{{user2_username}}\",\n  \"email\": \"user2@test.com\",\n  \"password\": \"testpass123\",\n  \"password_confirm\": \"testpass123\"\n}"
+							"raw": "{\n  \"username\": \"{{user2_username}}\",\n  \"email\": \"user2@test.com\",\n  \"password\": \"testpass123\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/register/",
@@ -1186,8 +1287,13 @@
 								"exec": [
 									"if (pm.response.code === 200) {",
 									"    const jsonData = pm.response.json();",
-									"    if (jsonData.length > 0) {",
-									"        pm.environment.set(\"game_area_id\", jsonData[0].id);",
+									"    // 페이징 형식: {count, results} 또는 배열 형식",
+									"    const results = jsonData.results || jsonData;",
+									"    if (results && results.length > 0) {",
+									"        pm.environment.set(\"game_area_id\", results[0].id);",
+									"        pm.test(\"게임 구역 조회 성공\", function () {",
+									"            pm.expect(results.length).to.be.at.least(1);",
+									"        });",
 									"    }",
 									"}"
 								],
