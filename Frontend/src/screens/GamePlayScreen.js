@@ -19,7 +19,7 @@ import hexagonOrange from '../../assets/icons/simple_hexagon_orange.png';
 import GoogleMapView from '../components/GoogleMapView';
 import { Marker, Polygon } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { cellToBoundary, latLngToCell, gridDisk, cellToLatLng } from 'h3-js';
+import { cellToBoundary, latLngToCell, gridDisk, cellToLatLng, gridDistance } from 'h3-js';
 import { startRecord, stopRecord } from '../services/recordService';
 import { getAttendance } from '../services/roomService';
 import socketService from '../services/socketService';
@@ -100,8 +100,36 @@ export default function GamePlayScreen({ navigation, route }) {
   const [attendanceData, setAttendanceData] = useState(null);
   const [hasAcquiredHex, setHasAcquiredHex] = useState(false); // 땅 획득 여부 (도장용)
 
-  // 헥사곤 하이라이트 상태
+  // 헥사곤 하이라이트 및 선택 상태
   const [highlightedTeam, setHighlightedTeam] = useState(null); // null, 'A', 'B'
+  const [selectedHexId, setSelectedHexId] = useState(null); // 터치로 선택된 헥사곤 ID
+
+  // 슈퍼 페인트볼 조준 (깜빡임효과)
+  const [aimingHexes, setAimingHexes] = useState([]);
+  const [aimingType, setAimingType] = useState(null); // 'normal', 'super', null
+  const [blinkOpacity, setBlinkOpacity] = useState(0.2);
+
+  // 깜빡임 애니메이션
+  useEffect(() => {
+    // 조준 대상이 없으면 종료
+    if (aimingHexes.length === 0) return;
+
+    // 조준 대상이 1개면 깜빡임 없이 고정 (선택 완료 상태)
+    if (aimingHexes.length === 1) {
+      setBlinkOpacity(0.7);
+      return;
+    }
+
+    // 여러 개일 때만 깜빡임 (조준 중 상태)
+    const interval = setInterval(() => {
+      setBlinkOpacity(prev => prev === 0.2 ? 0.6 : 0.2);
+    }, 500);
+    return () => clearInterval(interval);
+  }, [aimingHexes]);
+
+  // 페인트볼 개수 (프론트 상태로 관리)
+  const [paintballCount, setPaintballCount] = useState(5); // 일반 페인트볼
+  const [superPaintballCount, setSuperPaintballCount] = useState(2); // 슈퍼 페인트볼
 
   // 0. 헥사곤 그리드 초기화 (카이스트 지역 시뮬레이션)
   const initHexGrid = () => {
@@ -484,6 +512,121 @@ export default function GamePlayScreen({ navigation, route }) {
     setHighlightedTeam(prev => prev === team ? null : team);
   };
 
+  // 헥사곤 터치 핸들러
+  const handleHexPress = (h3Id) => {
+    // 조준 중일 때
+    if (aimingHexes.length > 0) {
+      // 클릭한 헥사곤이 조준 범위 안에 있는지 확인
+      if (!aimingHexes.includes(h3Id)) {
+        // 범위 밖 클릭 -> 조준 해제
+        setAimingHexes([]);
+        setAimingType(null);
+        return;
+      }
+
+      // 현재 내 위치의 H3 ID
+      if (!location) return;
+      const currentH3Index = latLngToCell(location.latitude, location.longitude, KAIST_CONFIG.h3Resolution);
+
+      // k-ring 거리 계산
+      const distance = gridDistance(currentH3Index, h3Id);
+      console.log(`🎯 헥사곤 선택: ${h3Id}, 거리: k=${distance}`);
+
+      // 시각적 연출: 클릭한 것만 남기고 깜빡임 멈춤
+      setAimingHexes([h3Id]);
+      setSelectedHexId(h3Id); // 흰색 테두리 효과를 위해 함께 설정
+
+      // 거리에 따른 페인트볼 종류 결정
+      if (distance === 0) {
+        // 내 위치 헥사곤 -> 그냥 선택만
+        setSelectedHexId(h3Id);
+        setAimingHexes([]);
+        return;
+      }
+
+      const isSuper = distance === 2;
+      const itemName = isSuper ? '슈퍼페인트볼' : '페인트볼';
+      const currentCount = isSuper ? superPaintballCount : paintballCount;
+
+      if (currentCount < 1) {
+        Alert.alert('사용 불가', `${itemName}이 부족합니다. (현재: ${currentCount}개)`);
+        return;
+      }
+
+      // 사용 확인 팝업
+      Alert.alert(
+        `${itemName} 사용`,
+        `${itemName}을 사용하시겠습니까?\n(잔여: ${currentCount}개)`,
+        [
+          {
+            text: '취소',
+            style: 'cancel',
+            onPress: () => {
+              setAimingHexes([]);
+              setAimingType(null);
+            }
+          },
+          {
+            text: '사용',
+            style: 'destructive',
+            onPress: () => {
+              // 개수 차감
+              if (isSuper) {
+                setSuperPaintballCount(prev => prev - 1);
+              } else {
+                setPaintballCount(prev => prev - 1);
+              }
+
+              // 해당 헥사곤 점령 (색깔 변경 핵심 로직)
+              setOwnedHexes(prev => ({
+                ...prev,
+                [h3Id]: {
+                  ...prev[h3Id],
+                  team: myTeam || 'A', // 내 팀이 설정되어 있지 않다면 기본 A팀으로 설정
+                  ownerId: 'me'
+                }
+              }));
+
+              console.log(`🎨 ${itemName} 사용! ${h3Id} 점령 완료 (팀: ${myTeam || 'A'})`);
+
+              // 시각적 정리: 조준 및 선택 효과 제거
+              setSelectedHexId(null);
+              setAimingHexes([]);
+              setAimingType(null);
+            }
+          }
+        ]
+      );
+      return;
+    }
+
+    // 일반 모드: 토글 선택
+    console.log('Hex Pressed:', h3Id);
+    setSelectedHexId(prev => prev === h3Id ? null : h3Id);
+  };
+
+  // 일반 페인트볼 롱프레스 (내 주변 1칸 깜빡임)
+  const handlePaintballLongPress = () => {
+    if (!location) return;
+    const currentH3Index = latLngToCell(location.latitude, location.longitude, KAIST_CONFIG.h3Resolution);
+    // k=1 (1칸 범위)
+    const neighbors = gridDisk(currentH3Index, 1);
+    setAimingHexes(neighbors);
+    setAimingType('normal');
+    console.log('🎯 일반 페인트볼 조준 시작:', neighbors.length);
+  };
+
+  // 슈퍼 페인트볼 롱프레스 (내 주변 2칸 깜빡임)
+  const handleSuperPaintballLongPress = () => {
+    if (!location) return;
+    const currentH3Index = latLngToCell(location.latitude, location.longitude, KAIST_CONFIG.h3Resolution);
+    // k=2 (2칸 범위)
+    const neighbors = gridDisk(currentH3Index, 2);
+    setAimingHexes(neighbors);
+    setAimingType('super');
+    console.log('🎯 슈퍼 페인트볼 조준 시작:', neighbors.length);
+  };
+
   return (
     <View style={styles.container}>
       {/* 지도 영역 (전체 배경) */}
@@ -516,8 +659,12 @@ export default function GamePlayScreen({ navigation, route }) {
               }));
 
               // 하이라이트 효과 데이터 준비
-              const isHighlighted = highlightedTeam === data.team;
+              const isHighlighted = highlightedTeam !== null && highlightedTeam === data.team;
               const isDimmed = highlightedTeam && highlightedTeam !== data.team;
+
+              const isSelected = selectedHexId === h3Id;
+              const isAiming = aimingHexes.includes(h3Id); // 조준 대상인가?
+              const opacityBoost = isSelected ? 0.3 : 0;
 
               const polygons = [];
 
@@ -540,8 +687,9 @@ export default function GamePlayScreen({ navigation, route }) {
                   longitude: c.longitude
                 }));
 
-                const fillColor = data.team === 'A' ? 'rgba(33, 150, 243, 0.9)' : 'rgba(255, 152, 0, 0.9)';
-                const strokeColor = data.team === 'A' ? '#1565C0' : '#E65100';
+                const opacity = Math.min(0.9 + opacityBoost, 1.0);
+                const fillColor = data.team === 'A' ? `rgba(33, 150, 243, ${opacity})` : `rgba(255, 152, 0, ${opacity})`;
+                const strokeColor = isSelected ? '#FFFFFF' : (data.team === 'A' ? '#1565C0' : '#E65100');
 
                 polygons.push(
                   <Polygon
@@ -549,49 +697,55 @@ export default function GamePlayScreen({ navigation, route }) {
                     coordinates={floatedCoordinates}
                     fillColor={fillColor}
                     strokeColor={strokeColor}
-                    strokeWidth={2}
+                    strokeWidth={isSelected ? 3 : 2}
                     zIndex={2}
+                    tappable={true}
+                    onPress={() => handleHexPress(h3Id)}
                   />
                 );
               } else {
                 // 일반 상태 (Highligh 아님)
-                let fillColor, strokeColor;
+                let baseColor, baseOpacity, strokeColor;
 
                 if (data.team === 'A') {
-                  fillColor = 'rgba(33, 150, 243, 0.3)';
+                  baseColor = '33, 150, 243';
                   strokeColor = '#1976D2';
+                  baseOpacity = isDimmed ? 0.1 : 0.3;
                 } else if (data.team === 'B') {
-                  fillColor = 'rgba(255, 152, 0, 0.3)';
+                  baseColor = '255, 152, 0';
                   strokeColor = '#F57C00';
+                  baseOpacity = isDimmed ? 0.1 : 0.3;
                 } else {
-                  // 미점령 (회색) - 진한 회색 (최종 적용)
-                  fillColor = 'rgba(50, 50, 50, 0.8)';
+                  // 미점령 (회색)
+                  baseColor = '50, 50, 50';
                   strokeColor = '#444444';
+                  baseOpacity = isDimmed ? 0.3 : 0.5;
                 }
 
-                if (isDimmed) {
-                  // 흐리게 (미점령 구역은 여전히 진한 회색 유지)
-                  if (data.team === 'A') {
-                    fillColor = 'rgba(33, 150, 243, 0.1)';
-                  } else if (data.team === 'B') {
-                    fillColor = 'rgba(255, 152, 0, 0.1)';
-                  } else {
-                    // 미점령은 진한 회색 유지 (안개 효과)
-                    fillColor = 'rgba(50, 50, 50, 0.6)';
-                  }
-                  strokeColor = 'transparent';
-                }
+                const opacity = Math.min(baseOpacity + opacityBoost, 1.0);
+
+                // 조준 중일 때는 핑크색 깜빡임으로 덮어씀
+                const finalFillColor = isAiming
+                  ? `rgba(255, 64, 129, ${blinkOpacity})`
+                  : `rgba(${baseColor}, ${opacity})`;
+
+                const finalStrokeColor = isSelected ? '#FFFFFF' : (isAiming ? '#FF4081' : (isDimmed ? 'transparent' : strokeColor));
+                const finalZIndex = isAiming ? 20 : (isSelected ? 10 : 1);
 
                 polygons.push(
                   <Polygon
-                    key={`${h3Id}-${fillColor}`}
+                    key={`${h3Id}-${finalFillColor}`}
                     coordinates={coordinates}
-                    fillColor={fillColor}
-                    strokeColor={strokeColor}
-                    strokeWidth={1}
-                    zIndex={1}
+                    fillColor={finalFillColor}
+                    strokeColor={finalStrokeColor}
+                    strokeWidth={isSelected ? 3 : (isAiming ? 2 : 1)}
+                    zIndex={finalZIndex}
+                    tappable={true}
+                    onPress={() => handleHexPress(h3Id)}
                   />
                 );
+
+
 
 
 
@@ -678,8 +832,54 @@ export default function GamePlayScreen({ navigation, route }) {
 
       {/* 헥사곤 카운터 + 출석 버튼 (왼쪽 하단) - SafeAreaView 바깥 */}
       <View style={styles.attendanceButtonContainer}>
+        {/* 일반 페인트볼 (New) */}
+        <TouchableOpacity
+          style={[styles.hexCounterItem, { alignSelf: 'flex-start', marginBottom: 6, backgroundColor: aimingType === 'normal' ? 'rgba(255, 64, 129, 0.9)' : 'rgba(230, 230, 230, 0.8)', padding: 6, borderRadius: 12 }]}
+          onPress={() => {
+            setAimingHexes([]);
+            setAimingType(null);
+          }}
+          onLongPress={handlePaintballLongPress}
+          delayLongPress={500}
+          activeOpacity={0.7}
+        >
+          <Image
+            source={paintItemIcon}
+            style={{
+              width: 48,
+              height: 48,
+              resizeMode: 'contain',
+              tintColor: myTeam === 'B' ? '#FF9800' : '#2196F3'
+            }}
+          />
+          <Text style={[styles.hexCountText, { color: myTeam === 'B' ? '#E65100' : '#1565C0', marginLeft: -2, marginRight: 8, fontSize: 20, fontWeight: 'bold' }]}>
+            {paintballCount}
+          </Text>
+        </TouchableOpacity>
+
+        {/* 슈퍼 페인트볼 (위쪽에 배치) */}
+        <TouchableOpacity
+          style={[styles.hexCounterItem, { alignSelf: 'flex-start', marginBottom: 8, backgroundColor: aimingType === 'super' ? 'rgba(255, 64, 129, 0.9)' : 'rgba(200, 200, 200, 0.9)', padding: 10, borderRadius: 15 }]}
+          onPress={() => {
+            setAimingHexes([]);
+            setAimingType(null);
+          }}
+          onLongPress={handleSuperPaintballLongPress}
+          delayLongPress={500}
+          activeOpacity={0.7}
+        >
+          <Image
+            source={paintItemIcon}
+            style={{ width: 72, height: 72, resizeMode: 'contain' }}
+          />
+          <Text style={[styles.hexCountText, { color: '#FF4081', marginLeft: -4, marginRight: 10, fontSize: 32, fontWeight: 'bold' }]}>
+            {superPaintballCount}
+          </Text>
+        </TouchableOpacity>
+
         {/* 헥사곤 개수 표시 (출석 버튼 위) */}
         <View style={styles.hexCounterContainer}>
+
           {/* A팀 (Blue) */}
           <TouchableOpacity
             style={[
