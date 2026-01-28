@@ -16,6 +16,8 @@ class GameAreaListSerializer(serializers.ModelSerializer):
 class ParticipantSerializer(serializers.ModelSerializer):
     """참가자 Serializer"""
     user = UserSerializer(read_only=True)
+    current_record_id = serializers.SerializerMethodField()
+    current_record_started_at = serializers.SerializerMethodField()
     
     class Meta:
         model = Participant
@@ -23,9 +25,18 @@ class ParticipantSerializer(serializers.ModelSerializer):
             'id', 'user', 'team', 'is_host', 'is_recording',
             'paintball_count', 'super_paintball_count', 'paintball_gauge',
             'hexes_claimed', 'rating_change', 'is_mvp',
-            'consecutive_attendance_days', 'joined_at'
+            'consecutive_attendance_days', 'joined_at', 
+            'current_record_id', 'current_record_started_at'
         ]
         read_only_fields = ['id', 'user', 'joined_at', 'hexes_claimed', 'rating_change', 'is_mvp']
+
+    def get_current_record_id(self, obj):
+        active_record = RunningRecord.objects.filter(participant=obj, ended_at__isnull=True).last()
+        return str(active_record.id) if active_record else None
+
+    def get_current_record_started_at(self, obj):
+        active_record = RunningRecord.objects.filter(participant=obj, ended_at__isnull=True).last()
+        return active_record.started_at if active_record else None
 
 
 class RoomListSerializer(serializers.ModelSerializer):

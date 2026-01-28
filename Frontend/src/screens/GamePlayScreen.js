@@ -21,7 +21,7 @@ import { Marker, Polygon } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { cellToBoundary, latLngToCell, gridDisk, cellToLatLng, gridDistance } from 'h3-js';
 import { startRecord, stopRecord } from '../services/recordService';
-import { getAttendance } from '../services/roomService';
+import { getAttendance, getMyRoom } from '../services/roomService';
 import socketService from '../services/socketService';
 import BackgroundLocationService from '../services/BackgroundLocationService';
 import { calculateDistance, calculatePace, formatDistance, formatTime } from '../utils/gpsUtils';
@@ -232,10 +232,36 @@ export default function GamePlayScreen({ navigation, route }) {
         setMyTeam('A');
       }
 
-      // 소켓 연결
+      // 3. 소켓 연결 및 내 참가 상태 확인
       if (roomId) {
         await socketService.connect(roomId);
         setupSocketListeners();
+
+        // [추가] 내가 현재 기록 중인지 확인하여 UI 상태 동기화
+        try {
+          const roomData = await getMyRoom();
+          if (roomData && roomData.my_participant) {
+            const part = roomData.my_participant;
+            if (part.is_recording) {
+              console.log('🔄 기존 기록 세션 발견. UI 상태를 동기화합니다.');
+              updateIsRecording(true);
+              setCurrentRecordId(part.current_record_id);
+
+              // 현재 시간과 시작 시간의 차이로 타이머 초기화
+              if (part.current_record_started_at) {
+                const startTime = new Date(part.current_record_started_at).getTime();
+                const now = new Date().getTime();
+                const diffSec = Math.floor((now - startTime) / 1000);
+                if (diffSec > 0) {
+                  setRecordingTime(diffSec);
+                  recordingTimeRef.current = diffSec;
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.log('상태 동기화 중 오류 (무시 가능):', err);
+        }
       }
     };
 
