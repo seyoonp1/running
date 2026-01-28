@@ -72,8 +72,8 @@ const BackgroundLocationService = {
             // 백그라운드 위치 추적 시작
             await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
                 accuracy: Location.Accuracy.BestForNavigation, // 최상위 정확도 (내비게이션 등급)
-                distanceInterval: 1, // 1미터마다 업데이트
-                timeInterval: 1000, // 최소 1초 간격
+                distanceInterval: 0, // 거리 무관하게 매초 전송
+                timeInterval: 1000, // 1초마다 전송 (매초)
                 showsBackgroundLocationIndicator: true, // iOS: 상태바에 위치 아이콘 표시
                 foregroundService: {
                     notificationTitle: 'Running 기록 중',

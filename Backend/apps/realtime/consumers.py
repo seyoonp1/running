@@ -620,7 +620,7 @@ class RoomConsumer(AsyncWebsocketConsumer):
         record.distance_meters = distance_meters
         record.ended_at = ended_at
         record.calculate_pace()
-        record.save()
+        record.save(update_fields=['duration_seconds', 'distance_meters', 'ended_at', 'avg_pace_seconds_per_km'])
         
         # 반환할 값들을 딕셔너리로 반환 (비동기 컨텍스트에서 안전하게 사용)
         return {

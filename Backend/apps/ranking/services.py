@@ -71,7 +71,7 @@ class RankingService:
             record.duration_seconds = int((record.ended_at - record.started_at).total_seconds())
             # distance_meters는 WebSocket에서 누적된 값이 있으면 유지
             record.calculate_pace()
-            record.save(update_fields=['ended_at', 'duration_seconds', 'avg_pace_seconds_per_km'])
+            record.save(update_fields=['ended_at', 'duration_seconds', 'distance_meters', 'avg_pace_seconds_per_km'])
 
         # 참가자 기록 상태도 모두 종료 처리
         Participant.objects.filter(room=room, is_recording=True).update(is_recording=False)

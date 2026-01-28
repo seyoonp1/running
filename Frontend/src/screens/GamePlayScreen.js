@@ -332,9 +332,10 @@ export default function GamePlayScreen({ navigation, route }) {
         teamACount: data.team_a_count || data.teamACount || 0,
         teamBCount: data.team_b_count || data.teamBCount || 0,
       });
-      // 기록 중지
-      if (isRecordingRef.current && currentRecordId) {
-        stopRecord(currentRecordId).catch(console.error);
+      // WebSocket으로 기록 중지 전송 (백엔드에서 거리 포함하여 저장)
+      if (isRecordingRef.current) {
+        socketService.send('stop_recording', {});
+        updateIsRecording(false);
       }
       // 백그라운드 위치 추적 중지
       BackgroundLocationService.stopTracking().catch(console.error);
@@ -1165,8 +1166,8 @@ export default function GamePlayScreen({ navigation, route }) {
                     gameEndResult.winnerTeam === 'A' && styles.gameEndWinnerA,
                     gameEndResult.winnerTeam === 'B' && styles.gameEndWinnerB,
                   ]}>
-                    {gameEndResult.winnerTeam === 'A' ? 'A팀 승리!' : 
-                     gameEndResult.winnerTeam === 'B' ? 'B팀 승리!' : '무승부'}
+                    {gameEndResult.winnerTeam === 'A' ? 'A팀 승리!' :
+                      gameEndResult.winnerTeam === 'B' ? 'B팀 승리!' : '무승부'}
                   </Text>
                 </View>
 
@@ -1191,8 +1192,8 @@ export default function GamePlayScreen({ navigation, route }) {
                   <View style={styles.gameEndSection}>
                     <Text style={styles.gameEndSectionTitle}>MVP</Text>
                     <Text style={styles.gameEndMvp}>
-                      {typeof gameEndResult.mvpUser === 'string' 
-                        ? gameEndResult.mvpUser 
+                      {typeof gameEndResult.mvpUser === 'string'
+                        ? gameEndResult.mvpUser
                         : (gameEndResult.mvpUser.username || gameEndResult.mvpUser)}
                     </Text>
                   </View>
