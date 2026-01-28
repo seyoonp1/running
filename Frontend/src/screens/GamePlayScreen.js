@@ -29,13 +29,13 @@ import { useAuth } from '../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
 
-// 게임 구역 설정: 카이스트 본원
-const KAIST_CONFIG = {
-  name: '카이스트 본원',
-  city: '대전광역시',
+// 기본 게임 구역 설정 (백엔드에서 가져온 값으로 덮어씀)
+const DEFAULT_GAME_CONFIG = {
+  name: '기본 구역',
+  city: '',
   center: { latitude: 36.3721, longitude: 127.3604 },
-  h3Resolution: 9, // H3 해상도 (약 170m 반경)
-  gridRadius: 10,  // 중심으로부터의 반지름 (헥사곤 개수 단위)
+  h3Resolution: 8, // H3 해상도 (모든 곳에서 8 사용)
+  gridRadius: 15,  // 중심으로부터의 반지름 (헥사곤 개수 단위)
 };
 
 // H3 ID를 좌표 배열로 변환하는 함수
@@ -94,6 +94,7 @@ export default function GamePlayScreen({ navigation, route }) {
   const [myTeam, setMyTeam] = useState(null); // 'A' or 'B'
   const [ownedHexes, setOwnedHexes] = useState({}); // { h3Id: { team: 'A', ownerId: '...' } }
   const [otherParticipants, setOtherParticipants] = useState({}); // { userId: { lat, lng, team } }
+  const [gameAreaConfig, setGameAreaConfig] = useState(DEFAULT_GAME_CONFIG); // 게임 영역 설정
 
   // 출석 상태
   const [showAttendance, setShowAttendance] = useState(false);
@@ -137,31 +138,39 @@ export default function GamePlayScreen({ navigation, route }) {
   const [paintballGauge, setPaintballGauge] = useState(0); // 페인트볼 충전 게이지 (0-100)
   const [superPaintballCount, setSuperPaintballCount] = useState(2); // 슈퍼 페인트볼
 
-  // 0. 헥사곤 그리드 초기화 (카이스트 지역 시뮬레이션)
-  const initHexGrid = () => {
-    console.log('🔷 initHexGrid 시작...');
+  // 0. 헥사곤 그리드 초기화 (게임 영역 + 백엔드 점령 상태 병합)
+  const initHexGrid = (config, serverHexOwnerships = {}) => {
+    console.log('🔷 initHexGrid 시작...', config);
 
     const centerH3 = latLngToCell(
-      KAIST_CONFIG.center.latitude,
-      KAIST_CONFIG.center.longitude,
-      KAIST_CONFIG.h3Resolution
+      config.center.latitude,
+      config.center.longitude,
+      config.h3Resolution
     );
     console.log('🔷 중심 H3 ID:', centerH3);
 
     // 중심 주변 헥사곤 ID 리스트 생성
-    const hexIds = gridDisk(centerH3, KAIST_CONFIG.gridRadius);
+    const hexIds = gridDisk(centerH3, config.gridRadius);
     console.log('🔷 생성된 헥사곤 개수:', hexIds.length);
 
     const initialHexes = {};
     hexIds.forEach((h3Id, index) => {
-      // 초기 상태: 모두 미점령 (Neutral)
-      initialHexes[h3Id] = {
-        team: null, // 주인이 없음
-        ownerId: null
-      };
+      // 백엔드에서 가져온 점령 상태가 있으면 사용, 없으면 미점령
+      if (serverHexOwnerships[h3Id]) {
+        initialHexes[h3Id] = {
+          team: serverHexOwnerships[h3Id].team,
+          ownerId: serverHexOwnerships[h3Id].user_id || serverHexOwnerships[h3Id].ownerId
+        };
+      } else {
+        initialHexes[h3Id] = {
+          team: null, // 주인이 없음
+          ownerId: null
+        };
+      }
     });
 
-    console.log('🔷 ownedHexes 설정 완료. 샘플:', Object.keys(initialHexes).slice(0, 3));
+    const claimedCount = Object.values(initialHexes).filter(h => h.team !== null).length;
+    console.log('🔷 ownedHexes 설정 완료. 점령된 헥사곤:', claimedCount);
     setOwnedHexes(initialHexes);
   };
 
@@ -169,7 +178,7 @@ export default function GamePlayScreen({ navigation, route }) {
   useEffect(() => {
     if (!location || !myTeam || Object.keys(ownedHexes).length === 0) return;
 
-    const currentH3Index = latLngToCell(location.latitude, location.longitude, KAIST_CONFIG.h3Resolution);
+    const currentH3Index = latLngToCell(location.latitude, location.longitude, gameAreaConfig.h3Resolution);
 
     // 1. 새로운 헥사곤에 진입했는지 확인
     if (currentH3Index !== lastVisitedHexId) {
@@ -228,8 +237,6 @@ export default function GamePlayScreen({ navigation, route }) {
       console.log('현재 위치:', currentLocation.coords);
       if (mounted) {
         setLocation(currentLocation.coords);
-        // 테스트용: 내 팀을 A팀으로 설정
-        setMyTeam('A');
       }
 
       // 3. 소켓 연결 및 내 참가 상태 확인
@@ -258,16 +265,56 @@ export default function GamePlayScreen({ navigation, route }) {
                 }
               }
             }
+
+            // 내 팀 정보 설정 (백엔드에서 가져온 값 사용)
+            if (roomData.my_participant?.team) {
+              setMyTeam(roomData.my_participant.team);
+            }
           }
+
+          // 게임 영역 설정 (백엔드 game_area에서 가져온 값 사용)
+          let config = DEFAULT_GAME_CONFIG;
+          if (roomData?.game_area) {
+            const ga = roomData.game_area;
+            // bounds에서 중심값 계산 (bounds가 폴리곤 좌표 배열인 경우)
+            let center = DEFAULT_GAME_CONFIG.center;
+            if (ga.bounds && ga.bounds.coordinates) {
+              // GeoJSON 형식: { type: "Polygon", coordinates: [[[lng, lat], ...]] }
+              const coords = ga.bounds.coordinates[0];
+              if (coords && coords.length > 0) {
+                const sumLat = coords.reduce((sum, c) => sum + c[1], 0);
+                const sumLng = coords.reduce((sum, c) => sum + c[0], 0);
+                center = {
+                  latitude: sumLat / coords.length,
+                  longitude: sumLng / coords.length
+                };
+              }
+            } else if (ga.center_lat && ga.center_lng) {
+              center = { latitude: ga.center_lat, longitude: ga.center_lng };
+            }
+
+            config = {
+              name: ga.name || DEFAULT_GAME_CONFIG.name,
+              city: ga.city || DEFAULT_GAME_CONFIG.city,
+              center: center,
+              h3Resolution: 8, // 모든 곳에서 H3 resolution 8 사용
+              gridRadius: 15,
+            };
+            setGameAreaConfig(config);
+          }
+
+          // 점령 상태를 initHexGrid에 전달
+          initHexGrid(config, roomData?.current_hex_ownerships || {});
         } catch (err) {
           console.log('상태 동기화 중 오류 (무시 가능):', err);
+          initHexGrid(DEFAULT_GAME_CONFIG); // 에러 시 빈 그리드로 초기화
         }
+      } else {
+        initHexGrid(DEFAULT_GAME_CONFIG); // roomId가 없으면 빈 그리드
       }
     };
 
-    initGame().then(() => {
-      initHexGrid(); // 카이스트 그리드 생성
-    });
+    initGame();
 
     // 초기 출석 상태 확인 (조용히)
     const checkInitialAttendance = async () => {
@@ -753,18 +800,18 @@ export default function GamePlayScreen({ navigation, route }) {
         <GoogleMapView
           ref={mapRef}
           style={styles.map}
-          initialCenter={KAIST_CONFIG.center}
+          initialCenter={gameAreaConfig.center}
           initialZoom={16}
           onMapReady={handleMapReady}
           onCameraChange={handleCameraChange}
         >
-          {/* 테스트 마커 - 카이스트 중심 */}
+          {/* 게임 영역 중심 마커 */}
           <Marker
-            coordinate={KAIST_CONFIG.center}
-            title="카이스트 중심"
+            coordinate={gameAreaConfig.center}
+            title={gameAreaConfig.name || '게임 영역 중심'}
           >
             <View style={{ backgroundColor: 'red', padding: 10, borderRadius: 20 }}>
-              <Text style={{ color: 'white', fontWeight: 'bold' }}>TEST</Text>
+              <Text style={{ color: 'white', fontWeight: 'bold' }}>CENTER</Text>
             </View>
           </Marker>
 
