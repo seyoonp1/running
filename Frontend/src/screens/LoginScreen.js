@@ -81,25 +81,23 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
-  // 오른쪽 육각형 그래픽 (파란색 3개, 주황색 4개)
-  const hexSize = 28;
-  const hexSpacing = hexSize * 1.732;
-  const hexContainerWidth = width * 0.35;
-  const hexContainerHeight = height * 0.4;
-  const hexStartX = hexContainerWidth * 0.4;
-  const hexStartY = hexContainerHeight * 0.3;
+  // 오른쪽 육각형 그래픽 (LandingScreen의 클러스터 패턴 복사)
+  const hexSize = 45; // 52.5에서 45로 조절
+  const dx = hexSize * 1.05;
+  const dy = hexSize * 0.60;
+
+  const hexContainerWidth = width * 0.4;
+  const hexContainerHeight = height * 0.35;
+  const hexStartX = hexContainerWidth * 0.5; // 우상단 배치를 위해 상향 조정
+  const hexStartY = hexContainerHeight * 0.35;
 
   const hexagons = [
-    // 파란색 3개
-    { x: hexStartX, y: hexStartY, color: '#003D7A' },
-    { x: hexStartX + hexSpacing * 0.866, y: hexStartY - hexSpacing * 0.5, color: '#003D7A' },
-    { x: hexStartX + hexSpacing * 0.866, y: hexStartY + hexSpacing * 0.5, color: '#003D7A' },
-
-    // 주황색 4개
-    { x: hexStartX - hexSpacing * 0.866, y: hexStartY, color: '#FF6B35' },
-    { x: hexStartX + hexSpacing * 0.866 * 2, y: hexStartY, color: '#FF6B35' },
-    { x: hexStartX + hexSpacing * 0.866, y: hexStartY - hexSpacing * 1.5, color: '#FF6B35' },
-    { x: hexStartX + hexSpacing * 0.866, y: hexStartY + hexSpacing * 1.5, color: '#FF6B35' },
+    { x: hexStartX, y: hexStartY, color: '#003D7A' }, // 중앙 파란색
+    { x: hexStartX + dx, y: hexStartY - dy, color: '#FF6B35' }, // 우상 주황
+    { x: hexStartX + dx, y: hexStartY + dy, color: '#003D7A' }, // 우하 파란색
+    { x: hexStartX - dx, y: hexStartY + dy, color: '#FF6B35' }, // 좌하 주황
+    { x: hexStartX + dx * 2, y: hexStartY, color: '#FF6B35' }, // 맨 우측 주황
+    { x: hexStartX + dx, y: hexStartY + dy * 3, color: '#FF6B35' }, // 맨 아래 주황
   ];
 
   return (
@@ -113,7 +111,7 @@ export default function LoginScreen({ navigation }) {
           </View>
         </TouchableOpacity>
 
-        {/* 오른쪽 육각형 그래픽 */}
+        {/* 배경 육각형 그래픽 (먼저 렌더링하여 뒤에 깔기) */}
         <View style={styles.hexContainer}>
           <View style={{ width: hexContainerWidth, height: hexContainerHeight }}>
             {hexagons.map((hex, index) => (
@@ -169,15 +167,21 @@ export default function LoginScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* 하단 오른쪽 Login 버튼 */}
+        {/* 하단 오른쪽 Login 버튼 영역 */}
         <View style={styles.loginButtonContainer}>
+          {/* 달리는 사람 아이콘 (우측 하단 배경) */}
+          <View style={styles.runningManContainer}>
+            <Image
+              source={require('../../assets/icons/runningman.png')}
+              style={styles.runningManImage}
+            />
+          </View>
+
+          {/* 로그인 버튼 문구 (아이콘의 왼쪽 하단에 배치하도록 절대 좌표 설정) */}
           <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
             <View style={styles.loginButtonContent}>
               <Text style={styles.loginButtonText}>Login</Text>
-              <Text style={styles.loginButtonSubtext}>달려가기</Text>
-            </View>
-            <View style={styles.runningManContainer}>
-              <Text style={styles.runningMan}>🏃</Text>
+              <Text style={styles.loginButtonSubtext}>달리러가기</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -223,21 +227,23 @@ const styles = StyleSheet.create({
   },
   hexContainer: {
     position: 'absolute',
-    top: height * 0.1,
-    right: 30,
-    width: width * 0.35,
+    top: height * 0.15, // 0.08에서 0.15로 하향 조정
+    right: 35, // 25에서 10만큼 더 왼쪽으로 이동 (35)
+    width: width * 0.45,
     height: height * 0.4,
-    zIndex: 1,
+    zIndex: 0, // 배경으로 배치
   },
   formContainer: {
-    marginTop: 80,
-    width: '55%',
-    marginLeft: 20,
+    marginTop: 325, // 310에서 15만큼 더 하향 조정
+    width: '80%', // 55%에서 80%로 늘려 텍스트 줄바꿈 방지
+    marginLeft: 0, // 10에서 10만큼 더 왼쪽으로 이동 (0)
   },
   createAccountText: {
-    fontSize: 16,
+    fontSize: 14, // 16에서 14로 축소
     color: '#000000',
-    marginBottom: 30,
+    marginTop: 20, // 25에서 5만큼 더 위로 조정 (20)
+    marginBottom: 0, // ID/Password 창이 밀려나지 않도록 간격 제거
+    marginLeft: 5, // 오른쪽으로 10 더 이동 (-5 -> 5)
   },
   createAccountLink: {
     color: '#003D7A',
@@ -251,10 +257,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#000000',
     marginBottom: 8,
+    marginLeft: 5, // 오른쪽으로 10 더 이동 (-5 -> 5)
   },
   input: {
     height: 50,
-    borderWidth: 1,
+    borderWidth: 2, // 두께를 1에서 2로 늘림
     borderColor: '#003D7A',
     borderRadius: 8,
     paddingHorizontal: 15,
@@ -267,36 +274,46 @@ const styles = StyleSheet.create({
     color: '#003D7A',
     fontWeight: '500',
     marginTop: 10,
+    marginLeft: 5, // 10에서 5만큼 왼쪽으로 이동 (다른 글씨들과 정렬 맞춤)
   },
   loginButtonContainer: {
     position: 'absolute',
-    bottom: 40,
-    right: 30,
-    alignItems: 'flex-end',
+    bottom: 0,
+    right: 0,
+    width: '100%',
+    height: 600, // 아이콘이 위로 올라갔으므로 영역 확장
   },
   loginButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    position: 'absolute',
+    right: 60, // 아이콘의 아래쪽 중앙 부근에 오도록 조정
+    bottom: 20, // 아이콘보다 아래에 배치
+    zIndex: 10,
   },
   loginButtonContent: {
-    alignItems: 'flex-end',
-    marginRight: 15,
+    alignItems: 'center', // 아이콘 아래에서 중앙 정렬
   },
   loginButtonText: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#003D7A',
     marginBottom: 4,
+    right: 20, // 5에서 15만큼 더 왼쪽으로 이동 (20)
   },
   loginButtonSubtext: {
-    fontSize: 16,
+    fontFamily: 'NanumPenScript',
+    fontSize: 22, // 나눔손글씨 적용 및 크기 최적화
     color: '#003D7A',
   },
   runningManContainer: {
-    marginLeft: 10,
+    position: 'absolute',
+    right: -105, // -120에서 15만큼 더 왼쪽으로 이동 (-105)
+    bottom: -50, // -55에서 5만큼 위로 이동 (-50)
+    zIndex: -1,
   },
-  runningMan: {
-    fontSize: 60,
+  runningManImage: {
+    width: 360, // 480에서 1/4(120)을 줄여 360으로 조절
+    height: 360,
+    resizeMode: 'contain',
+    tintColor: '#003D7A',
   },
 });

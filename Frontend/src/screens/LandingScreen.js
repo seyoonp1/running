@@ -11,6 +11,7 @@ import {
 
 const { width, height } = Dimensions.get('window');
 
+
 // 육각형 컴포넌트 (이미지와 동일하게 - sharp edges, flat colors)
 // 육각형 컴포넌트 (이미지 사용)
 const Hexagon = ({ x, y, size, color }) => {
@@ -55,12 +56,6 @@ export default function LandingScreen({ navigation }) {
   // 상단 오른쪽 육각형 클러스터 - 정밀 벌집 패턴 (Flat-topped 기준)
   const hexSize = 45; // 크기 증가
   // Flat-topped Geometry
-  // Width = size * 2
-  // Height = size * sqrt(3)
-  // Horiz spacing = width * 0.75 = 1.5 * size
-  // Vert spacing = height = size * sqrt(3)
-  // Offset = height / 2
-
   const dx = hexSize * 1.05; // 거의 겹칠 정도로 밀착
   const dy = hexSize * 0.60; // 거의 겹칠 정도로 밀착
 
@@ -71,31 +66,17 @@ export default function LandingScreen({ navigation }) {
   const startX = hexContainerWidth * 0.15; // 중앙으로 미세 조정
   const startY = hexContainerHeight * 0.35;
 
-  // 좌표 재구성 (Axial Q, R 유사 방식 적용)
-  // (0,0) 기준: x += dx, y += dy (ZigZag)
-
   const hexagons = [
-    // 1. 중앙 파란색 (Center)
     { x: startX, y: startY, color: '#003D7A' },
-
-    // 2. 우측 상단 주황 (Top-Right)
     { x: startX + dx, y: startY - dy, color: '#FF6B35' },
-
-    // 3. 우측 하단 파란색 (Bottom-Right)
     { x: startX + dx, y: startY + dy, color: '#003D7A' },
-
-    // 4. 왼쪽 아래 주황 (Left-Bottom)
     { x: startX - dx, y: startY + dy, color: '#FF6B35' },
-
-    // 5. 맨 우측 중간 주황
     { x: startX + dx * 2, y: startY, color: '#FF6B35' },
-
-    // 6. 우측 하단 파란색 바로 아래 (이미지 요청 사항)
     { x: startX + dx, y: startY + dy * 3, color: '#FF6B35' },
   ];
-
   return (
     <SafeAreaView style={styles.container}>
+
       {/* 다크 블루 테두리 프레임 */}
       <View style={styles.borderFrame}>
         {/* 상단 오른쪽: 육각형 그래픽 (7개) */}
@@ -161,10 +142,16 @@ export default function LandingScreen({ navigation }) {
   );
 }
 
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  safeArea: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },

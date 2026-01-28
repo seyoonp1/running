@@ -10,6 +10,7 @@ import {
   Image,
   Alert,
 } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -40,9 +41,6 @@ const Hexagon = ({ x, y, size, color, strokeOnly = false }) => {
     />
   );
 };
-
-import { useAuth } from '../contexts/AuthContext';
-// ...
 
 export default function SignUpScreen({ navigation }) {
   const [username, setUsername] = useState(''); // Modified id -> username
@@ -82,26 +80,23 @@ export default function SignUpScreen({ navigation }) {
     }
   };
 
-  // 오른쪽 육각형 그래픽 (주황색 3개, 파란색 2개, 파란색 테두리 1개)
-  const hexSize = 28;
-  const hexSpacing = hexSize * 1.732;
-  const hexContainerWidth = width * 0.3;
-  const hexContainerHeight = height * 0.4;
-  const hexStartX = hexContainerWidth * 0.3;
-  const hexStartY = hexContainerHeight * 0.2;
+  // 오른쪽 육각형 그래픽 (LandingScreen의 클러스터 패턴 복사)
+  const hexSize = 35;
+  const dx = hexSize * 1.05;
+  const dy = hexSize * 0.60;
+
+  const hexContainerWidth = width * 0.4;
+  const hexContainerHeight = height * 0.35;
+  const hexStartX = hexContainerWidth * 0.5; // 0.35에서 0.5로 추가 상향하여 오른쪽으로 더 이동
+  const hexStartY = hexContainerHeight * 0.4;
 
   const hexagons = [
-    // 주황색 3개
-    { x: hexStartX, y: hexStartY, color: '#FF6B35' },
-    { x: hexStartX + hexSpacing * 0.866, y: hexStartY + hexSpacing * 0.5, color: '#FF6B35' },
-    { x: hexStartX + hexSpacing * 0.866 * 2, y: hexStartY + hexSpacing, color: '#FF6B35' },
-
-    // 파란색 2개
-    { x: hexStartX + hexSpacing * 0.866, y: hexStartY - hexSpacing * 0.5, color: '#003D7A' },
-    { x: hexStartX + hexSpacing * 0.866 * 2, y: hexStartY + hexSpacing * 0.5, color: '#003D7A' },
-
-    // 파란색 테두리만 1개
-    { x: hexStartX + hexSpacing * 0.866 * 2, y: hexStartY - hexSpacing * 0.5, color: '#003D7A', strokeOnly: true },
+    { x: hexStartX, y: hexStartY, color: '#003D7A' }, // 중앙 파란색
+    { x: hexStartX + dx, y: hexStartY - dy, color: '#FF6B35' }, // 우상 주황
+    { x: hexStartX + dx, y: hexStartY + dy, color: '#003D7A' }, // 우하 파란색
+    { x: hexStartX - dx, y: hexStartY + dy, color: '#FF6B35' }, // 좌하 주황
+    { x: hexStartX + dx * 2, y: hexStartY, color: '#FF6B35' }, // 맨 우측 주황
+    { x: hexStartX + dx, y: hexStartY + dy * 3, color: '#FF6B35' }, // 맨 아래 주황
   ];
 
   return (
@@ -114,6 +109,22 @@ export default function SignUpScreen({ navigation }) {
             <Text style={styles.closeText}>✕</Text>
           </View>
         </TouchableOpacity>
+
+        {/* 오른쪽 육각형 그래픽 (배경으로 보내기 위해 입력 필드보다 먼저 렌더링) */}
+        <View style={styles.hexContainer}>
+          <View style={{ width: hexContainerWidth, height: hexContainerHeight }}>
+            {hexagons.map((hex, index) => (
+              <Hexagon
+                key={index}
+                x={hex.x}
+                y={hex.y}
+                size={hexSize}
+                color={hex.color}
+                strokeOnly={hex.strokeOnly}
+              />
+            ))}
+          </View>
+        </View>
 
         {/* 입력 필드들 */}
         <View style={styles.inputContainer}>
@@ -170,31 +181,18 @@ export default function SignUpScreen({ navigation }) {
           </View>
         </View>
 
-        {/* 오른쪽 육각형 그래픽 */}
-        <View style={styles.hexContainer}>
-          <View style={{ width: hexContainerWidth, height: hexContainerHeight }}>
-            {hexagons.map((hex, index) => (
-              <Hexagon
-                key={index}
-                x={hex.x}
-                y={hex.y}
-                size={hexSize}
-                color={hex.color}
-                strokeOnly={hex.strokeOnly}
-              />
-            ))}
-          </View>
-        </View>
-
         {/* Join 버튼 */}
         <View style={styles.joinButtonContainer}>
           <TouchableOpacity style={styles.joinButton} onPress={handleJoin}>
             <Text style={styles.joinButtonText}>Join</Text>
             <Text style={styles.joinButtonSubtext}>땅따먹으러 가기</Text>
           </TouchableOpacity>
-          {/* 달리는 사람 실루엣 (오른쪽에 위치) */}
+          {/* 달리는 사람 실루엣 (이미지로 변경) */}
           <View style={styles.runningManContainer}>
-            <Text style={styles.runningMan}>🏃</Text>
+            <Image
+              source={require('../../assets/icons/runningman.png')}
+              style={styles.runningManImage}
+            />
           </View>
         </View>
 
@@ -250,7 +248,7 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   inputContainer: {
-    marginTop: 60,
+    marginTop: 100, // 60에서 100으로 상향하여 아래로 이동
     width: '60%',
   },
   inputWrapper: {
@@ -274,11 +272,11 @@ const styles = StyleSheet.create({
   },
   hexContainer: {
     position: 'absolute',
-    top: height * 0.15,
-    right: 30,
-    width: width * 0.3,
+    top: height * 0.12,
+    right: 10,
+    width: width * 0.45,
     height: height * 0.4,
-    zIndex: 1,
+    zIndex: 0, // 입력창보다 뒤로 가도록 설정
   },
   joinButtonContainer: {
     position: 'absolute',
@@ -304,16 +302,21 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   joinButtonSubtext: {
-    fontSize: 14,
+    fontFamily: 'NanumPenScript',
+    fontSize: 20, // 손글씨체 특성상 크기를 키움
     color: '#FFFFFF',
   },
   runningManContainer: {
     position: 'absolute',
-    right: 20,
-    top: -10,
+    right: -55,
+    bottom: -15, // 5만큼 다시 올림 (-20 -> -15)
+    zIndex: 2,
   },
-  runningMan: {
-    fontSize: 50,
+  runningManImage: {
+    width: 240,
+    height: 240,
+    resizeMode: 'contain',
+    tintColor: '#003D7A', // Join 버튼 색상과 동일하게 변경
   },
   loginLinkContainer: {
     position: 'absolute',
