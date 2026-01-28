@@ -29,7 +29,7 @@ export default function RecordListScreen({ navigation }) {
       if (filter === 'year') params.year = new Date().getFullYear();
       if (filter === 'month') params.month = new Date().getMonth() + 1;
       if (filter === 'week') params.week = getWeekNumber(new Date());
-      
+
       const data = await getRecords(params);
       // 백엔드 응답 형식: { results: [...] } 또는 페이지네이션 형식
       const recordsList = Array.isArray(data) ? data : (data?.results || []);
@@ -61,7 +61,7 @@ export default function RecordListScreen({ navigation }) {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
+
     if (hours > 0) {
       return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     }
@@ -70,14 +70,15 @@ export default function RecordListScreen({ navigation }) {
 
   const formatDistance = (meters) => {
     if (meters >= 1000) {
-      return `${(meters / 1000).toFixed(2)} km`;
+      return `${(meters / 1000).toFixed(1)} km`;
     }
-    return `${meters} m`;
+    return `${meters.toFixed(1)} m`;
   };
 
   const formatPace = (secondsPerKm) => {
+    if (!secondsPerKm || secondsPerKm <= 0) return "--'--\"";
     const minutes = Math.floor(secondsPerKm / 60);
-    const seconds = secondsPerKm % 60;
+    const seconds = Math.floor(secondsPerKm % 60);
     return `${minutes}'${String(seconds).padStart(2, '0')}"`;
   };
 
@@ -159,7 +160,7 @@ export default function RecordListScreen({ navigation }) {
               <View style={styles.recordHeader}>
                 <Text style={styles.recordDate}>{formatDate(record.started_at)}</Text>
               </View>
-              
+
               <View style={styles.recordStats}>
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>거리</Text>

@@ -502,11 +502,15 @@ class RoomConsumer(AsyncWebsocketConsumer):
             # 백엔드에서 계산한 값 사용
             ended_at = timezone.now()
             
-            # 시간 계산 (백엔드에서 계산)
+            # 마지막 러닝 기록 가져오기 (duration 계산을 위해 먼저 가져옴)
+            record = await self.get_latest_running_record(participant)
+            
+            # 시간 계산: recording_start_time이 없으면 record.started_at 사용
             if self.recording_start_time:
                 duration_seconds = int((ended_at - self.recording_start_time).total_seconds())
+            elif record and record.started_at:
+                duration_seconds = int((ended_at - record.started_at).total_seconds())
             else:
-                # recording_start_time이 없으면 0 (정상적인 경우 발생하지 않음)
                 duration_seconds = 0
             
             # 거리: 백엔드에서 계산한 값 사용
@@ -514,9 +518,6 @@ class RoomConsumer(AsyncWebsocketConsumer):
             
             # 기록 종료
             await self.set_participant_recording(participant, False)
-            
-            # 마지막 러닝 기록 업데이트
-            record = await self.get_latest_running_record(participant)
             
             if record:
                 # update_running_record에서 계산된 값을 반환받아 사용
