@@ -33,7 +33,7 @@ const { width } = Dimensions.get('window');
 const DEFAULT_GAME_CONFIG = {
   name: '기본 구역',
   city: '',
-  center: { latitude: 36.3721, longitude: 127.3604 },
+  center: null, // 백엔드 game_area 또는 사용자 현재 위치에서 설정
   h3Resolution: 8, // H3 해상도 (모든 곳에서 8 사용)
   gridRadius: 15,  // 중심으로부터의 반지름 (헥사곤 개수 단위)
 };
@@ -94,7 +94,7 @@ export default function GamePlayScreen({ navigation, route }) {
   const [myTeam, setMyTeam] = useState(null); // 'A' or 'B'
   const [ownedHexes, setOwnedHexes] = useState({}); // { h3Id: { team: 'A', ownerId: '...' } }
   const [otherParticipants, setOtherParticipants] = useState({}); // { userId: { lat, lng, team } }
-  const [gameAreaConfig, setGameAreaConfig] = useState(DEFAULT_GAME_CONFIG); // 게임 영역 설정
+  const [gameAreaConfig, setGameAreaConfig] = useState(null); // 게임 영역 설정 (백엔드에서 로드)
 
   // 출석 상태
   const [showAttendance, setShowAttendance] = useState(false);
@@ -176,7 +176,7 @@ export default function GamePlayScreen({ navigation, route }) {
 
   // 영역 점령 로직 (위치 이동 시 트리거)
   useEffect(() => {
-    if (!location || !myTeam || Object.keys(ownedHexes).length === 0) return;
+    if (!location || !myTeam || !gameAreaConfig || Object.keys(ownedHexes).length === 0) return;
 
     const currentH3Index = latLngToCell(location.latitude, location.longitude, gameAreaConfig.h3Resolution);
 
@@ -273,11 +273,11 @@ export default function GamePlayScreen({ navigation, route }) {
           }
 
           // 게임 영역 설정 (백엔드 game_area에서 가져온 값 사용)
-          let config = DEFAULT_GAME_CONFIG;
+          let config;
           if (roomData?.game_area) {
             const ga = roomData.game_area;
             // bounds에서 중심값 계산 (bounds가 폴리곤 좌표 배열인 경우)
-            let center = DEFAULT_GAME_CONFIG.center;
+            let center = null;
             if (ga.bounds && ga.bounds.coordinates) {
               // GeoJSON 형식: { type: "Polygon", coordinates: [[[lng, lat], ...]] }
               const coords = ga.bounds.coordinates[0];
@@ -293,24 +293,56 @@ export default function GamePlayScreen({ navigation, route }) {
               center = { latitude: ga.center_lat, longitude: ga.center_lng };
             }
 
+            // center가 여전히 null이면 사용자 현재 위치 사용
+            if (!center) {
+              center = location || { latitude: 37.5665, longitude: 126.9780 };
+            }
+
             config = {
-              name: ga.name || DEFAULT_GAME_CONFIG.name,
-              city: ga.city || DEFAULT_GAME_CONFIG.city,
+              name: ga.name || '게임 구역',
+              city: ga.city || '',
               center: center,
               h3Resolution: 8, // 모든 곳에서 H3 resolution 8 사용
               gridRadius: 15,
             };
-            setGameAreaConfig(config);
+          } else {
+            // game_area가 없으면 사용자 현재 위치 기반
+            config = {
+              name: '현재 위치 기반',
+              city: '',
+              center: location || { latitude: 37.5665, longitude: 126.9780 },
+              h3Resolution: 8,
+              gridRadius: 15,
+            };
           }
+          setGameAreaConfig(config);
 
           // 점령 상태를 initHexGrid에 전달
           initHexGrid(config, roomData?.current_hex_ownerships || {});
         } catch (err) {
           console.log('상태 동기화 중 오류 (무시 가능):', err);
-          initHexGrid(DEFAULT_GAME_CONFIG); // 에러 시 빈 그리드로 초기화
+          // 에러 시 사용자 현재 위치 기반으로 초기화
+          const fallbackConfig = {
+            name: '현재 위치 기반',
+            city: '',
+            center: location || { latitude: 37.5665, longitude: 126.9780 },
+            h3Resolution: 8,
+            gridRadius: 15,
+          };
+          setGameAreaConfig(fallbackConfig);
+          initHexGrid(fallbackConfig);
         }
       } else {
-        initHexGrid(DEFAULT_GAME_CONFIG); // roomId가 없으면 빈 그리드
+        // roomId가 없으면 사용자 현재 위치 기반
+        const fallbackConfig = {
+          name: '현재 위치 기반',
+          city: '',
+          center: location || { latitude: 37.5665, longitude: 126.9780 },
+          h3Resolution: 8,
+          gridRadius: 15,
+        };
+        setGameAreaConfig(fallbackConfig);
+        initHexGrid(fallbackConfig);
       }
     };
 
@@ -800,20 +832,22 @@ export default function GamePlayScreen({ navigation, route }) {
         <GoogleMapView
           ref={mapRef}
           style={styles.map}
-          initialCenter={gameAreaConfig.center}
+          initialCenter={gameAreaConfig?.center || location || { latitude: 37.5665, longitude: 126.9780 }}
           initialZoom={16}
           onMapReady={handleMapReady}
           onCameraChange={handleCameraChange}
         >
           {/* 게임 영역 중심 마커 */}
-          <Marker
-            coordinate={gameAreaConfig.center}
-            title={gameAreaConfig.name || '게임 영역 중심'}
-          >
-            <View style={{ backgroundColor: 'red', padding: 10, borderRadius: 20 }}>
-              <Text style={{ color: 'white', fontWeight: 'bold' }}>CENTER</Text>
-            </View>
-          </Marker>
+          {gameAreaConfig?.center && (
+            <Marker
+              coordinate={gameAreaConfig.center}
+              title={gameAreaConfig.name || '게임 영역 중심'}
+            >
+              <View style={{ backgroundColor: 'red', padding: 10, borderRadius: 20 }}>
+                <Text style={{ color: 'white', fontWeight: 'bold' }}>CENTER</Text>
+              </View>
+            </Marker>
+          )}
 
           {/* 헥사곤 점령 영역 표시 (Polygon 방식 - 정확한 경계) */}
           {Object.entries(ownedHexes).map(([h3Id, data]) => {
