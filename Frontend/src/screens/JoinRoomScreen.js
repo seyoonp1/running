@@ -17,7 +17,7 @@ export default function JoinRoomScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
 
   const handleJoin = async () => {
-    // 현재 참가 중인 방 확인
+    // 현재 참가 중인 방 확인 (ready 또는 active 상태만 체크)
     try {
       const myRoom = await getMyRoom();
       if (myRoom) {
@@ -30,7 +30,7 @@ export default function JoinRoomScreen({ navigation }) {
           );
           return;
         }
-        // finished 상태면 방 참가 허용
+        // finished 상태는 체크하지 않음 (다른 방 참가 허용)
       }
     } catch (error) {
       // getMyRoom 실패는 무시 (방이 없는 경우일 수 있음)

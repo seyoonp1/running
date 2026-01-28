@@ -46,7 +46,7 @@ export default function CreateRoomScreen({ navigation, route }) {
   };
 
   const handleCreateRoom = async () => {
-    // 현재 참가 중인 방 확인
+    // 현재 참가 중인 방 확인 (ready 또는 active 상태만 체크)
     try {
       const myRoom = await getMyRoom();
       if (myRoom) {
@@ -59,7 +59,7 @@ export default function CreateRoomScreen({ navigation, route }) {
           );
           return;
         }
-        // finished 상태면 방 만들기 허용 (자동으로 나가진 않지만 새 방 만들 수 있음)
+        // finished 상태는 체크하지 않음 (새 방 만들기 허용)
       }
     } catch (error) {
       // getMyRoom 실패는 무시 (방이 없는 경우일 수 있음)
