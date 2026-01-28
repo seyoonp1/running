@@ -138,6 +138,7 @@ export default function SignUpScreen({ navigation }) {
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
+              editable={true}
             />
           </View>
 
@@ -151,6 +152,7 @@ export default function SignUpScreen({ navigation }) {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              editable={true}
             />
           </View>
 
@@ -165,6 +167,7 @@ export default function SignUpScreen({ navigation }) {
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
+              editable={true}
             />
           </View>
 
@@ -247,10 +250,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000000',
   },
-  inputContainer: {
-    marginTop: 100, // 60에서 100으로 상향하여 아래로 이동
-    width: '60%',
-  },
   inputWrapper: {
     marginBottom: 20,
   },
@@ -277,6 +276,12 @@ const styles = StyleSheet.create({
     width: width * 0.45,
     height: height * 0.4,
     zIndex: 0, // 입력창보다 뒤로 가도록 설정
+    pointerEvents: 'none', // iOS에서 터치 이벤트를 통과시켜 TextInput이 선택 가능하도록
+  },
+  inputContainer: {
+    marginTop: 100, // 60에서 100으로 상향하여 아래로 이동
+    width: '60%',
+    zIndex: 10, // iOS에서 TextInput이 선택 가능하도록 zIndex 명시
   },
   joinButtonContainer: {
     position: 'absolute',

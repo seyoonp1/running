@@ -145,6 +145,7 @@ export default function LoginScreen({ navigation }) {
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
+              editable={true}
             />
           </View>
 
@@ -158,6 +159,7 @@ export default function LoginScreen({ navigation }) {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              editable={true}
             />
           </View>
 
@@ -232,11 +234,13 @@ const styles = StyleSheet.create({
     width: width * 0.45,
     height: height * 0.4,
     zIndex: 0, // 배경으로 배치
+    pointerEvents: 'none', // iOS에서 터치 이벤트를 통과시켜 TextInput이 선택 가능하도록
   },
   formContainer: {
     marginTop: 325, // 310에서 15만큼 더 하향 조정
     width: '80%', // 55%에서 80%로 늘려 텍스트 줄바꿈 방지
     marginLeft: 0, // 10에서 10만큼 더 왼쪽으로 이동 (0)
+    zIndex: 10, // iOS에서 TextInput이 선택 가능하도록 zIndex 명시
   },
   createAccountText: {
     fontSize: 14, // 16에서 14로 축소
