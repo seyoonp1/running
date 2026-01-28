@@ -52,39 +52,46 @@ export default function LandingScreen({ navigation }) {
     }
   };
 
-  // 상단 오른쪽 육각형 클러스터 - 참고 이미지와 동일한 벌집 패턴
-  const hexSize = 28;
-  // 육각형 간 간격 (평평한 면이 위/아래로 향하는 경우)
-  const hexWidth = hexSize * 2; // 너비
-  const hexHeight = hexSize * 1.732; // 높이 (√3)
-  const horizSpacing = hexWidth * 0.75; // 수평 간격 (3/4 너비)
-  const vertSpacing = hexHeight * 0.5; // 수직 간격 (1/2 높이)
+  // 상단 오른쪽 육각형 클러스터 - 정밀 벌집 패턴 (Flat-topped 기준)
+  const hexSize = 45; // 크기 증가
+  // Flat-topped Geometry
+  // Width = size * 2
+  // Height = size * sqrt(3)
+  // Horiz spacing = width * 0.75 = 1.5 * size
+  // Vert spacing = height = size * sqrt(3)
+  // Offset = height / 2
+
+  const dx = hexSize * 1.05; // 거의 겹칠 정도로 밀착
+  const dy = hexSize * 0.60; // 거의 겹칠 정도로 밀착
 
   // hexContainer 내부 기준 좌표
-  const hexContainerWidth = width * 0.4;
-  const hexContainerHeight = height * 0.22;
+  const hexContainerWidth = width * 0.8; // 컨테이너도 조금 확장
+  const hexContainerHeight = height * 0.4;
 
-  // 클러스터 중심점
-  const centerX = hexContainerWidth * 0.5;
-  const centerY = hexContainerHeight * 0.5;
+  const startX = hexContainerWidth * 0.15; // 중앙으로 미세 조정
+  const startY = hexContainerHeight * 0.35;
 
-  // 참고 이미지 기준 벌집 패턴 (6개 + α)
-  // Row 0 (상단): 주황 - 파랑 - 파랑 - 주황
-  // Row 1 (중앙): 주황 (왼쪽 아래) - 주황 (오른쪽 아래)
-  // Row 2 (하단): 주황
+  // 좌표 재구성 (Axial Q, R 유사 방식 적용)
+  // (0,0) 기준: x += dx, y += dy (ZigZag)
+
   const hexagons = [
-    // Row 0 (상단 4개)
-    { x: centerX - horizSpacing * 1.5, y: centerY - vertSpacing, color: '#FF6B35' }, // 맨 왼쪽 주황
-    { x: centerX - horizSpacing * 0.5, y: centerY - vertSpacing, color: '#003D7A' }, // 왼쪽 파랑
-    { x: centerX + horizSpacing * 0.5, y: centerY - vertSpacing, color: '#003D7A' }, // 오른쪽 파랑
-    { x: centerX + horizSpacing * 1.5, y: centerY - vertSpacing, color: '#FF6B35' }, // 맨 오른쪽 주황
+    // 1. 중앙 파란색 (Center)
+    { x: startX, y: startY, color: '#003D7A' },
 
-    // Row 1 (중앙 - 엇갈림)
-    { x: centerX - horizSpacing, y: centerY + vertSpacing * 0.5, color: '#FF6B35' }, // 왼쪽 주황
-    { x: centerX + horizSpacing, y: centerY + vertSpacing * 0.5, color: '#FF6B35' }, // 오른쪽 주황
+    // 2. 우측 상단 주황 (Top-Right)
+    { x: startX + dx, y: startY - dy, color: '#FF6B35' },
 
-    // Row 2 (하단)
-    { x: centerX, y: centerY + vertSpacing * 2, color: '#FF6B35' }, // 가운데 주황
+    // 3. 우측 하단 파란색 (Bottom-Right)
+    { x: startX + dx, y: startY + dy, color: '#003D7A' },
+
+    // 4. 왼쪽 아래 주황 (Left-Bottom)
+    { x: startX - dx, y: startY + dy, color: '#FF6B35' },
+
+    // 5. 맨 우측 중간 주황
+    { x: startX + dx * 2, y: startY, color: '#FF6B35' },
+
+    // 6. 우측 하단 파란색 바로 아래 (이미지 요청 사항)
+    { x: startX + dx, y: startY + dy * 3, color: '#FF6B35' },
   ];
 
   return (
@@ -120,28 +127,31 @@ export default function LandingScreen({ navigation }) {
         {/* 하단: 버튼들 */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity
-            style={styles.button}
+            style={styles.ellipseButton}
             onPress={handleSignUp}
             activeOpacity={0.7}
           >
+            <View style={styles.buttonBackground} />
             <Text style={styles.buttonText}>회원가입</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.button}
+            style={styles.ellipseButton}
             onPress={handleLogin}
             activeOpacity={0.7}
           >
+            <View style={styles.buttonBackground} />
             <Text style={styles.buttonText}>로그인</Text>
           </TouchableOpacity>
 
-          {/* 테스트용: GameMain으로 바로 이동 */}
+          {/* 테스트용 버튼 (동일한 타원형 스타일 적용) */}
           <TouchableOpacity
-            style={[styles.button, styles.testButton]}
+            style={styles.ellipseButton}
             onPress={() => navigation?.navigate('GameMain')}
             activeOpacity={0.7}
           >
-            <Text style={[styles.buttonText, styles.testButtonText]}>
+            <View style={[styles.buttonBackground, { borderColor: '#FF6B35' }]} />
+            <Text style={[styles.buttonText, { color: '#FF6B35', fontSize: 13 }]}>
               🧪 테스트: 게임 메인
             </Text>
           </TouchableOpacity>
@@ -179,8 +189,8 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     alignItems: 'center',
-    marginTop: height * 0.2,
-    marginBottom: 10,
+    marginTop: height * 0.2 + 85, // 한 번 더 내림
+    marginBottom: 5,
   },
   title: {
     fontSize: 56,
@@ -191,34 +201,58 @@ const styles = StyleSheet.create({
   },
   taglineContainer: {
     alignItems: 'center',
-    marginBottom: height * 0.1,
+    marginTop: 15, // 제목과의 간격 추가하여 전체적으로 내려오게 함
+    marginBottom: height * 0.08,
   },
   tagline: {
-    fontSize: 20,
-    color: '#003D7A', // 파란색
-    fontWeight: '400',
+    fontFamily: 'NanumPenScript', // 나눔손글씨 펜 적용
+    fontSize: 32, // 손글씨체는 작아서 더 크게 키움
+    color: '#003D7A', // 원래 파란색으로 복구
+    marginTop: 5,
   },
   buttonContainer: {
     width: '100%',
     alignItems: 'center',
     marginBottom: 40,
     paddingHorizontal: 20,
+    marginTop: -20, // 위 문구와의 간격 조절
   },
-  button: {
-    width: '70%',
-    height: 52,
-    borderWidth: 2,
-    borderColor: '#003D7A', // 파란색 테두리
-    backgroundColor: '#FFFFFF',
-    borderRadius: 100, // 완전한 타원형 (Capsule shape)
+  ellipseButton: {
+    width: '100%',
+    height: 80, // 배경이 늘어날 공간 확보
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 10,
+    marginVertical: -5, // 타원형이라 위아래 공간이 많이 남으므로 좁힘
+    backgroundColor: 'transparent',
+  },
+  buttonBackground: {
+    position: 'absolute',
+    width: 60,   // 원의 기본 지름
+    height: 60,  // 원의 기본 지름
+    borderWidth: 1.2, // 테두리를 조금 더 두껍게 조정
+    borderColor: '#003D7A',
+    borderRadius: 30, // 완벽한 원 (지름의 절반)
+    backgroundColor: '#FFFFFF',
+    // 원을 가로로 4.8배 늘려서 진짜 타원형 생성 (비율 미세 축소)
+    transform: [{ scaleX: 4.8 }],
   },
   buttonText: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#003D7A', // 파란색 텍스트
+    fontSize: 19,
+    fontWeight: '600',
+    color: '#003D7A',
+    letterSpacing: 0.5,
+    zIndex: 2, // 배경보다 위에 표시
+  },
+  button: {
+    // 기존 스타일 유지 (테스트용)
+    width: '70%',
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#003D7A',
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
   },
   testButton: {
     backgroundColor: '#FF6B35',
