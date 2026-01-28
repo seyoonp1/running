@@ -21,6 +21,7 @@ import {
   getAttendance,
 } from '../services/roomService';
 import { getFriends } from '../services/friendService';
+import socketService from '../services/socketService';
 
 import { useAuth } from '../contexts/AuthContext';
 
@@ -51,6 +52,25 @@ export default function RoomDetailScreen({ navigation, route }) {
 
   useEffect(() => {
     loadRoomDetail();
+    
+    // WebSocket 연결 및 실시간 업데이트 리스너 설정
+    if (roomId) {
+      socketService.connect(roomId);
+      
+      // 방 업데이트 이벤트 리스너 (참가자 추가, 게임 시작 등)
+      const unsubscribe = socketService.on('room_updated', (data) => {
+        console.log('방 업데이트 이벤트 수신:', data);
+        if (data.event === 'participant_joined' || data.event === 'game_started') {
+          // 방 정보 새로고침
+          loadRoomDetail();
+        }
+      });
+      
+      return () => {
+        unsubscribe();
+        socketService.disconnect();
+      };
+    }
   }, [roomId]);
 
   const loadRoomDetail = async () => {

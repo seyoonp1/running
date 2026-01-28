@@ -16,6 +16,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Path, Circle, Polygon } from 'react-native-svg';
 import { getRooms, getMyRoom, getRoomDetail, joinRoom } from '../services/roomService';
+import socketService from '../services/socketService';
 import { useAuth } from '../contexts/AuthContext';
 import simpleHexagon from '../../assets/icons/simple_hexagon.png';
 import simpleHexagonOrange from '../../assets/icons/simple_hexagon_orange.png';
@@ -218,6 +219,38 @@ export default function GameMainScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       loadData();
+      
+      // 내 방이 있으면 WebSocket 연결하여 실시간 업데이트 받기
+      let unsubscribe = null;
+      const setupWebSocket = async () => {
+        try {
+          const myRoomData = await getMyRoom();
+          if (myRoomData?.id) {
+            // WebSocket 연결
+            socketService.connect(myRoomData.id);
+            
+            // 방 업데이트 이벤트 리스너
+            unsubscribe = socketService.on('room_updated', (data) => {
+              console.log('GameMainScreen 방 업데이트 이벤트 수신:', data);
+              if (data.event === 'participant_joined' || data.event === 'game_started') {
+                // 데이터 새로고침
+                loadData();
+              }
+            });
+          }
+        } catch (error) {
+          console.error('WebSocket 설정 실패:', error);
+        }
+      };
+      
+      setupWebSocket();
+      
+      return () => {
+        if (unsubscribe) {
+          unsubscribe();
+        }
+        socketService.disconnect();
+      };
     }, [])
   );
 
