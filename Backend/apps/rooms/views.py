@@ -123,17 +123,17 @@ def my_current_room(request):
     from django.db.models import Case, When, IntegerField
     
     participants = Participant.objects.filter(
-        user=request.user
+        user=request.user,
+        room__status__in=['active', 'ready']  # finished 상태는 제외
     ).select_related('room', 'room__game_area').annotate(
         status_priority=Case(
             When(room__status='active', then=1),
             When(room__status='ready', then=2),
-            When(room__status='finished', then=3),
-            default=4,
+            default=3,
             output_field=IntegerField()
         )
     ).order_by(
-        'status_priority',  # 1(active) > 2(ready) > 3(finished)
+        'status_priority',  # 1(active) > 2(ready)
         '-room__created_at'  # 같은 상태면 최신순
     )
     

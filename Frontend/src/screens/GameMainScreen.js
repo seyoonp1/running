@@ -232,10 +232,10 @@ export default function GameMainScreen({ navigation }) {
             // 방 업데이트 이벤트 리스너
             unsubscribe = socketService.on('room_updated', (data) => {
               console.log('GameMainScreen 방 업데이트 이벤트 수신:', data);
-              if (data.event === 'participant_joined' || 
-                  data.event === 'participant_left' || 
-                  data.event === 'participant_changed_team' || 
-                  data.event === 'game_started') {
+              if (data.event === 'participant_joined' ||
+                data.event === 'participant_left' ||
+                data.event === 'participant_changed_team' ||
+                data.event === 'game_started') {
                 // 데이터 새로고침
                 loadData();
               }
@@ -304,8 +304,8 @@ export default function GameMainScreen({ navigation }) {
             text: '참가',
             onPress: async () => {
               try {
-                // 이미 참가 중인 방이 있는지 확인
-                if (myRoom) {
+                // 이미 참가 중인 방이 있는지 확인 (finished 상태는 제외)
+                if (myRoom && myRoom.status !== 'finished') {
                   Alert.alert(
                     '알림',
                     `이미 "${myRoom.name}" 방에 참가 중입니다.\n다른 방에 참가하려면 먼저 현재 방에서 나가주세요.`,
@@ -416,7 +416,7 @@ export default function GameMainScreen({ navigation }) {
                   ]}>
                     {myRoom.status === 'active' ? '● 게임 진행 중' : myRoom.status === 'ready' ? '○ 게임 준비 중' : '● 게임 종료'}
                   </Text>
-                  {timeLeft ? (
+                  {timeLeft && myRoom.status !== 'finished' ? (
                     <Text style={styles.countdownText}>
                       (시작까지 {timeLeft})
                     </Text>
