@@ -88,12 +88,15 @@ class RoomConsumer(AsyncWebsocketConsumer):
             data = json.loads(text_data)
             event_type = data.get('type')
             
-            if event_type == 'loc':
+            if event_type == 'location_update':
                 # 위치 업데이트
                 await self.handle_location_update(data)
             elif event_type == 'paintball':
                 # 페인트볼 사용
                 await self.handle_paintball(data)
+            elif event_type == 'exchange_paintball':
+                # 페인트볼 교환
+                await self.handle_exchange_paintball()
             elif event_type == 'start_recording':
                 # 기록 시작
                 await self.handle_start_recording()
@@ -150,7 +153,7 @@ class RoomConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_send(
                 self.group_name,
                 {
-                    'type': 'location_update',
+                    'type': 'participant_location',
                     'participant_id': self.participant_id,
                     'lat': lat,
                     'lng': lng,
@@ -317,6 +320,7 @@ class RoomConsumer(AsyncWebsocketConsumer):
         # 게이지 추가
         if gauge_to_add > 0:
             await self.add_gauge(participant, gauge_to_add)
+            await self.send_gauge_update(participant)
         
         # 점령 저장
         if claimed:
@@ -424,6 +428,36 @@ class RoomConsumer(AsyncWebsocketConsumer):
         await self.check_and_claim_loop(team, room, participant, target_h3_id)
         
         await self.broadcast_score_update(room)
+        # 페인트볼 사용 후 게이지/개수 업데이트 전송
+        await self.send_gauge_update(participant)
+    
+    async def handle_exchange_paintball(self):
+        """페인트볼 교환 처리 (일반 3개 -> 슈퍼 1개)"""
+        participant = await self.get_participant()
+        if not participant:
+            return
+            
+        success = await self.db_exchange_paintball(participant)
+        if success:
+            await self.send_gauge_update(participant)
+            await self.send(text_data=json.dumps({
+                'type': 'exchange_success',
+                'message': '슈퍼 페인트볼로 교환되었습니다.'
+            }))
+        else:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': '페인트볼이 부족합니다 (최소 3개 필요)'
+            }))
+
+    async def send_gauge_update(self, participant):
+        """본인에게 게이지 및 페인트볼 현황 전송"""
+        await self.send(text_data=json.dumps({
+            'type': 'gauge_update',
+            'paintball_gauge': participant.paintball_gauge,
+            'paintball_count': participant.paintball_count,
+            'super_paintball_count': participant.super_paintball_count
+        }))
     
     async def handle_start_recording(self):
         """기록 시작 처리"""
@@ -608,6 +642,11 @@ class RoomConsumer(AsyncWebsocketConsumer):
         return participant.use_super_paintball()
     
     @database_sync_to_async
+    def db_exchange_paintball(self, participant):
+        """페인트볼 교환 DB 처리"""
+        return participant.exchange_paintballs_to_super()
+    
+    @database_sync_to_async
     def save_hex_ownerships(self, room, ownerships):
         """점령 상태 저장 (race condition 방지를 위해 최신 상태를 다시 읽어서 merge)"""
         # 최신 상태를 다시 조회
@@ -724,8 +763,8 @@ class RoomConsumer(AsyncWebsocketConsumer):
     
     # Event handlers (channel layer callbacks)
     
-    async def location_update(self, event):
-        """위치 업데이트 브로드캐스트"""
+    async def participant_location(self, event):
+        """타 참가자 위치 업데이트 수신 시 클라이언트에 전송"""
         await self.send(text_data=json.dumps(event))
     
     async def hex_claimed(self, event):
