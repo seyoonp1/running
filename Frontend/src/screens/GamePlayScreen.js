@@ -504,9 +504,9 @@ export default function GamePlayScreen({ navigation, route }) {
             // 백그라운드 위치 추적 중단
             await BackgroundLocationService.stopTracking();
 
-            // API 호출 (기록 저장)
-            if (currentRecordId) {
-              await stopRecord(currentRecordId);
+            // WebSocket으로 기록 종료 전송 (백엔드에서 거리/페이스 저장)
+            if (roomId) {
+              socketService.send('stop_recording', {});
             }
 
             // 상태 초기화
