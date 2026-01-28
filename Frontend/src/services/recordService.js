@@ -2,7 +2,7 @@ import api from './api';
 import { mockApi } from './mockData';
 
 // Mock 모드 활성화 여부
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 /**
  * 기록 시작
@@ -17,11 +17,26 @@ export const startRecord = async (roomId = null) => {
   }
   
   try {
-    const response = await api.post('/records/start/', { room_id: roomId });
+    const response = await api.post('/records/start/', roomId ? { room_id: roomId } : {});
     return response.data;
   } catch (error) {
     console.error('기록 시작 실패:', error);
-    throw error;
+    // 에러 처리 개선
+    if (!error.response) {
+      const networkError = new Error('네트워크 연결을 확인해주세요.');
+      networkError.isNetworkError = true;
+      throw networkError;
+    }
+    const errorData = error.response.data;
+    let errorMessage = '기록 시작에 실패했습니다.';
+    if (errorData?.message) {
+      errorMessage = errorData.message;
+    } else if (errorData?.detail) {
+      errorMessage = errorData.detail;
+    }
+    const processedError = new Error(errorMessage);
+    processedError.response = error.response;
+    throw processedError;
   }
 };
 
@@ -42,7 +57,22 @@ export const stopRecord = async (recordId) => {
     return response.data;
   } catch (error) {
     console.error('기록 종료 실패:', error);
-    throw error;
+    // 에러 처리 개선
+    if (!error.response) {
+      const networkError = new Error('네트워크 연결을 확인해주세요.');
+      networkError.isNetworkError = true;
+      throw networkError;
+    }
+    const errorData = error.response.data;
+    let errorMessage = '기록 종료에 실패했습니다.';
+    if (errorData?.message) {
+      errorMessage = errorData.message;
+    } else if (errorData?.detail) {
+      errorMessage = errorData.detail;
+    }
+    const processedError = new Error(errorMessage);
+    processedError.response = error.response;
+    throw processedError;
   }
 };
 
@@ -60,10 +90,26 @@ export const getRecords = async (params = {}) => {
   
   try {
     const response = await api.get('/records/', { params });
+    // 백엔드 응답 형식: { results: [...] } 또는 페이지네이션 형식
     return response.data;
   } catch (error) {
     console.error('기록 목록 조회 실패:', error);
-    throw error;
+    // 에러 처리 개선
+    if (!error.response) {
+      const networkError = new Error('네트워크 연결을 확인해주세요.');
+      networkError.isNetworkError = true;
+      throw networkError;
+    }
+    const errorData = error.response.data;
+    let errorMessage = '기록 목록을 불러올 수 없습니다.';
+    if (errorData?.message) {
+      errorMessage = errorData.message;
+    } else if (errorData?.detail) {
+      errorMessage = errorData.detail;
+    }
+    const processedError = new Error(errorMessage);
+    processedError.response = error.response;
+    throw processedError;
   }
 };
 
@@ -85,6 +131,21 @@ export const getRecordStats = async (period = null) => {
     return response.data;
   } catch (error) {
     console.error('기록 통계 조회 실패:', error);
-    throw error;
+    // 에러 처리 개선
+    if (!error.response) {
+      const networkError = new Error('네트워크 연결을 확인해주세요.');
+      networkError.isNetworkError = true;
+      throw networkError;
+    }
+    const errorData = error.response.data;
+    let errorMessage = '기록 통계를 불러올 수 없습니다.';
+    if (errorData?.message) {
+      errorMessage = errorData.message;
+    } else if (errorData?.detail) {
+      errorMessage = errorData.detail;
+    }
+    const processedError = new Error(errorMessage);
+    processedError.response = error.response;
+    throw processedError;
   }
 };

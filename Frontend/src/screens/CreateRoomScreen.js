@@ -10,7 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { getGameAreas, createRoom } from '../services/roomService';
+import { getGameAreas, createRoom, getMyRoom } from '../services/roomService';
 
 export default function CreateRoomScreen({ navigation, route }) {
   const [loading, setLoading] = useState(false);
@@ -46,6 +46,26 @@ export default function CreateRoomScreen({ navigation, route }) {
   };
 
   const handleCreateRoom = async () => {
+    // 현재 참가 중인 방 확인
+    try {
+      const myRoom = await getMyRoom();
+      if (myRoom) {
+        const status = myRoom.status;
+        if (status === 'ready' || status === 'active') {
+          Alert.alert(
+            '알림',
+            `이미 "${myRoom.name}" 방에 참가 중입니다.\n현재 방에서 나간 후 새로운 방을 만들 수 있습니다.`,
+            [{ text: '확인' }]
+          );
+          return;
+        }
+        // finished 상태면 방 만들기 허용 (자동으로 나가진 않지만 새 방 만들 수 있음)
+      }
+    } catch (error) {
+      // getMyRoom 실패는 무시 (방이 없는 경우일 수 있음)
+      console.log('현재 방 확인 실패 (방이 없을 수 있음):', error);
+    }
+
     // 유효성 검사
     if (!roomName.trim()) {
       Alert.alert('오류', '방 이름을 입력해주세요.');

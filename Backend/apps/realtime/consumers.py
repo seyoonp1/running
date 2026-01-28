@@ -786,3 +786,7 @@ class RoomConsumer(AsyncWebsocketConsumer):
     async def loop_complete(self, event):
         """루프 완성 브로드캐스트"""
         await self.send(text_data=json.dumps(event))
+    
+    async def room_updated(self, event):
+        """방 업데이트 브로드캐스트 (참가자 추가, 게임 시작 등)"""
+        await self.send(text_data=json.dumps(event))

@@ -1,7 +1,6 @@
 """
 Room views - MVP 버전
 """
-import logging
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -20,9 +19,6 @@ from .serializers import (
     RunningStatsSerializer
 )
 from apps.accounts.models import User, Friendship, Mailbox
-from apps.ranking.tasks import process_game_end
-
-logger = logging.getLogger(__name__)
 
 
 # ==================== 게임 구역 API ====================
@@ -226,6 +222,22 @@ def join_room(request):
         is_host=False
     )
     
+    # WebSocket으로 방 업데이트 브로드캐스트
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(
+            f'room_{room.id}',
+            {
+                'type': 'room_updated',
+                'event': 'participant_joined',
+                'room_id': str(room.id),
+                'participant': ParticipantSerializer(participant).data,
+                'room': RoomDetailSerializer(room, context={'request': request}).data,
+            }
+        )
+    
     return Response({
         'message': '방에 참가했습니다.',
         'room': RoomDetailSerializer(room).data,
@@ -374,25 +386,35 @@ def start_room(request, id):
     room.status = 'active'
     room.save(update_fields=['status'])
     
-    # 게임 종료 시간에 맞춰 종료 태스크 예약
-    eta = room.end_date
-    logger.info(
-        "Scheduling game end task: room=%s end_date=%s",
-        room.id,
-        eta.isoformat(),
-    )
-    process_game_end.apply_async(
-        args=[str(room.id)],
-        eta=eta,
-    )
+    # WebSocket으로 게임 시작 브로드캐스트
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(
+            f'room_{room.id}',
+            {
+                'type': 'room_updated',
+                'event': 'game_started',
+                'room_id': str(room.id),
+                'room': RoomDetailSerializer(room, context={'request': request}).data,
+            }
+        )
+    
+    # 게임 종료 태스크를 방 생성 시 설정된 end_date 시간에 실행하도록 예약
+    from apps.ranking.tasks import process_game_end
+    if room.end_date and room.end_date > now:
+        process_game_end.apply_async(
+            args=[str(room.id)],
+            eta=room.end_date
+        )
     
     return Response({
         'message': '게임이 시작되었습니다.',
         'room': {
             'id': str(room.id),
             'status': room.status,
-            'start_date': room.start_date,
-            'end_date': room.end_date
+            'start_date': room.start_date
         }
     })
 

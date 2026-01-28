@@ -1,8 +1,11 @@
 import { tokenService } from './api';
 
-const WS_URL = __DEV__
-    ? 'ws://44.196.254.97/ws/room' // 개발 환경에서도 EC2 서버 사용
-    : 'ws://44.196.254.97/ws/room'; // 프로덕션 환경
+// API_BASE_URL에서 WebSocket URL 생성
+const API_BASE_URL = __DEV__
+    ? 'http://44.196.254.97/api'  // 개발 환경 (EC2 서버 주소)
+    : 'http://44.196.254.97/api';  // 프로덕션 서버 (EC2 서버 주소)
+const WS_BASE_URL = API_BASE_URL.replace('/api', '').replace('http://', 'ws://').replace('https://', 'wss://');
+const WS_URL = `${WS_BASE_URL}/ws/room`;
 
 class SocketService {
     constructor() {

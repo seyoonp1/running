@@ -100,6 +100,10 @@ export default function GamePlayScreen({ navigation, route }) {
   const [attendanceData, setAttendanceData] = useState(null);
   const [hasAcquiredHex, setHasAcquiredHex] = useState(false); // 땅 획득 여부 (도장용)
 
+  // 게임 종료 상태
+  const [showGameEndModal, setShowGameEndModal] = useState(false);
+  const [gameEndResult, setGameEndResult] = useState(null);
+
   // 헥사곤 하이라이트 및 선택 상태
   const [highlightedTeam, setHighlightedTeam] = useState(null); // null, 'A', 'B'
   const [selectedHexId, setSelectedHexId] = useState(null); // 터치로 선택된 헥사곤 ID
@@ -316,6 +320,26 @@ export default function GamePlayScreen({ navigation, route }) {
           h3Id: data.h3_id
         }
       }));
+    });
+
+    // 게임 종료 이벤트
+    socketService.on('game_ended', (data) => {
+      console.log('게임 종료 이벤트 수신:', data);
+      // 게임 종료 결과 저장 (백엔드 payload 형식에 맞게 처리)
+      setGameEndResult({
+        winnerTeam: data.winner_team || data.winnerTeam,
+        mvpUser: data.mvp_username || data.mvp_user?.username || data.mvpUser?.username || data.mvpUser || null,
+        teamACount: data.team_a_count || data.teamACount || 0,
+        teamBCount: data.team_b_count || data.teamBCount || 0,
+      });
+      // 기록 중지
+      if (isRecordingRef.current && currentRecordId) {
+        stopRecord(currentRecordId).catch(console.error);
+      }
+      // 백그라운드 위치 추적 중지
+      BackgroundLocationService.stopTracking().catch(console.error);
+      // 모달 표시
+      setShowGameEndModal(true);
     });
 
     // 내 팀 정보 등 초기 정보 수신 (필요 시)
@@ -1125,6 +1149,72 @@ export default function GamePlayScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
+
+      {/* 게임 종료 결과 모달 */}
+      <Modal visible={showGameEndModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.gameEndModalContent}>
+            <Text style={styles.gameEndTitle}>게임 종료</Text>
+            {gameEndResult && (
+              <View style={styles.gameEndResult}>
+                {/* 승리 팀 */}
+                <View style={styles.gameEndSection}>
+                  <Text style={styles.gameEndSectionTitle}>승리 팀</Text>
+                  <Text style={[
+                    styles.gameEndWinner,
+                    gameEndResult.winnerTeam === 'A' && styles.gameEndWinnerA,
+                    gameEndResult.winnerTeam === 'B' && styles.gameEndWinnerB,
+                  ]}>
+                    {gameEndResult.winnerTeam === 'A' ? 'A팀 승리!' : 
+                     gameEndResult.winnerTeam === 'B' ? 'B팀 승리!' : '무승부'}
+                  </Text>
+                </View>
+
+                {/* 점수 */}
+                <View style={styles.gameEndSection}>
+                  <Text style={styles.gameEndSectionTitle}>최종 점수</Text>
+                  <View style={styles.gameEndScores}>
+                    <View style={styles.gameEndScoreItem}>
+                      <Text style={styles.gameEndScoreLabel}>A팀</Text>
+                      <Text style={styles.gameEndScoreValue}>{gameEndResult.teamACount}개</Text>
+                    </View>
+                    <Text style={styles.gameEndScoreDivider}>:</Text>
+                    <View style={styles.gameEndScoreItem}>
+                      <Text style={styles.gameEndScoreLabel}>B팀</Text>
+                      <Text style={styles.gameEndScoreValue}>{gameEndResult.teamBCount}개</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* MVP */}
+                {gameEndResult.mvpUser && (
+                  <View style={styles.gameEndSection}>
+                    <Text style={styles.gameEndSectionTitle}>MVP</Text>
+                    <Text style={styles.gameEndMvp}>
+                      {typeof gameEndResult.mvpUser === 'string' 
+                        ? gameEndResult.mvpUser 
+                        : (gameEndResult.mvpUser.username || gameEndResult.mvpUser)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.gameEndButton}
+              onPress={() => {
+                setShowGameEndModal(false);
+                // GameMainScreen으로 이동
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'GameMain' }],
+                });
+              }}
+            >
+              <Text style={styles.gameEndButtonText}>확인</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1361,6 +1451,89 @@ const styles = StyleSheet.create({
   },
   modalCloseButtonText: {
     fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  // 게임 종료 모달 스타일
+  gameEndModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  gameEndTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#000000',
+    marginBottom: 20,
+  },
+  gameEndResult: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  gameEndSection: {
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  gameEndSectionTitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  gameEndWinner: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#003D7A',
+  },
+  gameEndWinnerA: {
+    color: '#2196F3',
+  },
+  gameEndWinnerB: {
+    color: '#FF6B35',
+  },
+  gameEndScores: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 15,
+  },
+  gameEndScoreItem: {
+    alignItems: 'center',
+  },
+  gameEndScoreLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  gameEndScoreValue: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#003D7A',
+  },
+  gameEndScoreDivider: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#999',
+  },
+  gameEndMvp: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FF6B35',
+  },
+  gameEndButton: {
+    marginTop: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    backgroundColor: '#003D7A',
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+  },
+  gameEndButtonText: {
+    fontSize: 18,
     color: '#FFFFFF',
     fontWeight: 'bold',
   },
