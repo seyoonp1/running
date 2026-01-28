@@ -12,7 +12,7 @@ export const mockGameAreas = {
         type: 'Polygon',
         coordinates: [[[127.0, 37.5], [127.1, 37.5], [127.1, 37.6], [127.0, 37.6], [127.0, 37.5]]],
       },
-      h3_resolution: 8,
+      h3_resolution: 9,
       is_active: true,
     },
     {
@@ -24,7 +24,7 @@ export const mockGameAreas = {
         type: 'Polygon',
         coordinates: [[[127.1, 37.5], [127.2, 37.5], [127.2, 37.6], [127.1, 37.6], [127.1, 37.5]]],
       },
-      h3_resolution: 8,
+      h3_resolution: 9,
       is_active: true,
     },
     {
@@ -36,7 +36,7 @@ export const mockGameAreas = {
         type: 'Polygon',
         coordinates: [[[126.9, 37.5], [127.0, 37.5], [127.0, 37.6], [126.9, 37.6], [126.9, 37.5]]],
       },
-      h3_resolution: 8,
+      h3_resolution: 9,
       is_active: true,
     },
   ],
@@ -104,7 +104,7 @@ export const mockRoomDetail = {
       type: 'Polygon',
       coordinates: [[[127.0, 37.5], [127.1, 37.5], [127.1, 37.6], [127.0, 37.6], [127.0, 37.5]]],
     },
-    h3_resolution: 8,
+    h3_resolution: 9,
   },
   current_hex_ownerships: {},
   participants: [

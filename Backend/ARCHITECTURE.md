@@ -78,22 +78,22 @@ H3 공식 문서 기준 (지구 평균):
 
 | Resolution | Edge Length (m) | Area (km²) | 설명 |
 |------------|----------------|------------|------|
-| 8          | ~461           | ~0.17      | **권장** |
-| 9          | ~174           | ~0.024     | 너무 작음 |
+| 9          | ~174           | ~0.024     | **권장** |
+| 8          | ~461           | ~0.17      | 너무 큼 |
 | 7          | ~1228          | ~1.2       | 너무 큼 |
 
-**Resolution 8의 Edge Length (~461m)**는:
+**Resolution 9의 Edge Length (~174m)**는:
 - 2분 이동: 2.5 m/s × 120s = 300m → 약 0.65 edge
 - 3분 이동: 3.3 m/s × 180s = 594m → 약 1.29 edge
 
-**Resolution 8이 목표 범위(300~600m)와 가장 근접합니다.**
+**Resolution 9가 목표 범위와 가장 근접합니다 (작은 단위 점령 선호).**
 
 ### 2.2 최종 추천
 
-#### **권장: Resolution 8**
-- **Edge Length**: ~461m
-- **이유**: 2~3분 이동거리(300~600m)와 가장 근접
-- **장점**: 적절한 게임 속도, GPS 오차(10~30m) 대비 충분한 셀 크기
+#### **권장: Resolution 9**
+- **Edge Length**: ~174m
+- **이유**: 더 정밀하고 조밀한 점령 경험 제공
+- **장점**: 빠른 땅따먹기 피드백, 좁은 구역에서의 경쟁 유리
 
 #### **대안: Resolution 7**
 - **Edge Length**: ~1228m
@@ -265,7 +265,7 @@ class Session(models.Model):
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     game_area_bounds = models.JSONField(default=dict)  # {"north": ..., "south": ..., ...}
-    h3_resolution = models.IntegerField(default=8)
+    h3_resolution = models.IntegerField(default=9)
     created_at = models.DateTimeField(auto_now_add=True)
 ```
 
@@ -624,7 +624,7 @@ CHANNEL_LAYERS = {
 ```python
 import h3
 
-def latlng_to_h3(lat: float, lng: float, res: int = 8) -> str:
+def latlng_to_h3(lat: float, lng: float, res: int = 9) -> str:
     """위도/경도를 H3 인덱스로 변환"""
     return h3.geo_to_h3(lat, lng, res)
 

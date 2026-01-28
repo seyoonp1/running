@@ -4,7 +4,7 @@
 
 ### 1. 전체 아키텍처 설계
 - [x] 시스템 아키텍처 다이어그램
-- [x] H3 해상도 추천 (Resolution 8, 대안 Resolution 7)
+- [x] H3 해상도 추천 (Resolution 9, 대안 Resolution 8)
 - [x] AWS 배포 구성도
 - [x] Security Group 규칙
 
@@ -127,8 +127,8 @@ docker-compose exec web python manage.py simulate_run \
 ## 📝 참고 사항
 
 ### H3 Resolution
-- **권장**: Resolution 8 (~461m edge length)
-- **대안**: Resolution 7 (~1228m edge length)
+- **권장**: Resolution 9 (~174m edge length)
+- **대안**: Resolution 8 (~461m edge length)
 - **점령 판정**: 최소 2회 연속 샘플, 30초 체류
 
 ### WebSocket 이벤트
