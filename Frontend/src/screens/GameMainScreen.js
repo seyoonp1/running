@@ -232,7 +232,10 @@ export default function GameMainScreen({ navigation }) {
             // 방 업데이트 이벤트 리스너
             unsubscribe = socketService.on('room_updated', (data) => {
               console.log('GameMainScreen 방 업데이트 이벤트 수신:', data);
-              if (data.event === 'participant_joined' || data.event === 'game_started') {
+              if (data.event === 'participant_joined' || 
+                  data.event === 'participant_left' || 
+                  data.event === 'participant_changed_team' || 
+                  data.event === 'game_started') {
                 // 데이터 새로고침
                 loadData();
               }

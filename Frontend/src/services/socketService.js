@@ -16,7 +16,14 @@ class SocketService {
 
     // WebSocket 연결
     async connect(roomId) {
-        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        // 다른 방으로 이동하는 경우 기존 연결 종료
+        if (this.socket && this.roomId !== roomId) {
+            console.log('다른 방으로 이동 중. 기존 연결 종료:', this.roomId, '->', roomId);
+            this.disconnect();
+        }
+        
+        // 이미 같은 방에 연결되어 있으면 재연결하지 않음
+        if (this.socket && this.socket.readyState === WebSocket.OPEN && this.roomId === roomId) {
             console.log('이미 연결되어 있습니다.');
             return;
         }

@@ -222,6 +222,9 @@ def join_room(request):
         is_host=False
     )
     
+    # 방 정보 새로고침 (참가자 수 등 업데이트)
+    room.refresh_from_db()
+    
     # WebSocket으로 방 업데이트 브로드캐스트
     from channels.layers import get_channel_layer
     from asgiref.sync import async_to_sync
@@ -271,6 +274,7 @@ def leave_room(request, id):
                        status=status.HTTP_403_FORBIDDEN)
     
     was_host = participant.is_host
+    participant_user_id = participant.user.id
     participant.delete()
     
     # 남은 참가자 확인
@@ -287,6 +291,25 @@ def leave_room(request, id):
         if new_host:
             new_host.is_host = True
             new_host.save(update_fields=['is_host'])
+    
+    # 방 정보 새로고침
+    room.refresh_from_db()
+    
+    # WebSocket으로 방 업데이트 브로드캐스트
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(
+            f'room_{room.id}',
+            {
+                'type': 'room_updated',
+                'event': 'participant_left',
+                'room_id': str(room.id),
+                'user_id': str(participant_user_id),
+                'room': RoomDetailSerializer(room, context={'request': request}).data,
+            }
+        )
     
     return Response({'message': '방에서 나갔습니다.'})
 
@@ -336,6 +359,25 @@ def change_team(request, id):
     
     participant.team = new_team
     participant.save(update_fields=['team'])
+    
+    # 방 정보 새로고침
+    room.refresh_from_db()
+    
+    # WebSocket으로 방 업데이트 브로드캐스트
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(
+            f'room_{room.id}',
+            {
+                'type': 'room_updated',
+                'event': 'participant_changed_team',
+                'room_id': str(room.id),
+                'participant': ParticipantSerializer(participant).data,
+                'room': RoomDetailSerializer(room, context={'request': request}).data,
+            }
+        )
     
     return Response({
         'message': '팀을 변경했습니다.',
