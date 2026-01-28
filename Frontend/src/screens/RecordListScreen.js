@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { getRecords } from '../services/recordService';
 
@@ -30,9 +31,12 @@ export default function RecordListScreen({ navigation }) {
       if (filter === 'week') params.week = getWeekNumber(new Date());
       
       const data = await getRecords(params);
-      setRecords(data.results || []);
+      // 백엔드 응답 형식: { results: [...] } 또는 페이지네이션 형식
+      const recordsList = Array.isArray(data) ? data : (data?.results || []);
+      setRecords(recordsList);
     } catch (error) {
       console.error('기록 목록 로드 실패:', error);
+      Alert.alert('오류', error.message || '기록 목록을 불러올 수 없습니다.');
       setRecords([]);
     } finally {
       setLoading(false);
@@ -159,15 +163,21 @@ export default function RecordListScreen({ navigation }) {
               <View style={styles.recordStats}>
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>거리</Text>
-                  <Text style={styles.statValue}>{formatDistance(record.distance_meters)}</Text>
+                  <Text style={styles.statValue}>
+                    {record.distance_meters ? formatDistance(record.distance_meters) : '0 m'}
+                  </Text>
                 </View>
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>시간</Text>
-                  <Text style={styles.statValue}>{formatDuration(record.duration_seconds)}</Text>
+                  <Text style={styles.statValue}>
+                    {record.duration_seconds ? formatDuration(record.duration_seconds) : '0:00'}
+                  </Text>
                 </View>
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>페이스</Text>
-                  <Text style={styles.statValue}>{formatPace(record.avg_pace_seconds_per_km)}</Text>
+                  <Text style={styles.statValue}>
+                    {record.avg_pace_seconds_per_km ? formatPace(record.avg_pace_seconds_per_km) : '--\'--"'}
+                  </Text>
                 </View>
               </View>
             </View>

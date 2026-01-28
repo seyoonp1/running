@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { getRecordStats } from '../services/recordService';
 
@@ -26,6 +27,8 @@ export default function RecordStatsScreen({ navigation }) {
       setStats(data);
     } catch (error) {
       console.error('통계 로드 실패:', error);
+      Alert.alert('오류', error.message || '통계를 불러올 수 없습니다.');
+      setStats(null);
     } finally {
       setLoading(false);
     }
@@ -129,13 +132,13 @@ export default function RecordStatsScreen({ navigation }) {
                 <View style={styles.statBox}>
                   <Text style={styles.statLabel}>총 거리</Text>
                   <Text style={styles.statValue}>
-                    {formatDistance(stats.total_distance_meters)}
+                    {formatDistance(stats.total_distance_meters || 0)}
                   </Text>
                 </View>
                 <View style={styles.statBox}>
                   <Text style={styles.statLabel}>총 시간</Text>
                   <Text style={styles.statValue}>
-                    {formatDuration(stats.total_duration_seconds)}
+                    {formatDuration(stats.total_duration_seconds || 0)}
                   </Text>
                 </View>
               </View>
@@ -143,12 +146,12 @@ export default function RecordStatsScreen({ navigation }) {
               <View style={styles.statRow}>
                 <View style={styles.statBox}>
                   <Text style={styles.statLabel}>총 런닝 횟수</Text>
-                  <Text style={styles.statValue}>{stats.total_runs}회</Text>
+                  <Text style={styles.statValue}>{stats.total_runs || 0}회</Text>
                 </View>
                 <View style={styles.statBox}>
                   <Text style={styles.statLabel}>평균 페이스</Text>
                   <Text style={styles.statValue}>
-                    {formatPace(stats.avg_pace_seconds_per_km)}
+                    {stats.avg_pace_seconds_per_km ? formatPace(stats.avg_pace_seconds_per_km) : '--\'--"'}
                   </Text>
                 </View>
               </View>
@@ -159,11 +162,11 @@ export default function RecordStatsScreen({ navigation }) {
               <View style={styles.infoCard}>
                 <Text style={styles.infoTitle}>평균 정보</Text>
                 <Text style={styles.infoText}>
-                  평균 거리: {formatDistance(stats.total_distance_meters / stats.total_runs)}
+                  평균 거리: {formatDistance((stats.total_distance_meters || 0) / stats.total_runs)}
                 </Text>
                 <Text style={styles.infoText}>
                   평균 시간: {formatDuration(
-                    Math.floor(stats.total_duration_seconds / stats.total_runs)
+                    Math.floor((stats.total_duration_seconds || 0) / stats.total_runs)
                   )}
                 </Text>
               </View>

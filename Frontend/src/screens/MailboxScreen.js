@@ -32,9 +32,12 @@ export default function MailboxScreen({ navigation }) {
       if (filter === 'room_invite') params.mail_type = 'room_invite';
       
       const data = await getMailbox(params);
-      setMails(data.results || []);
+      // 백엔드 응답 형식: { count: ..., results: [...] }
+      const mailsList = Array.isArray(data) ? data : (data?.results || []);
+      setMails(mailsList);
     } catch (error) {
       console.error('우편함 로드 실패:', error);
+      Alert.alert('오류', error.message || '우편함을 불러올 수 없습니다.');
       setMails([]);
     } finally {
       setLoading(false);
@@ -66,7 +69,7 @@ export default function MailboxScreen({ navigation }) {
         },
       ]);
     } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || '처리에 실패했습니다.';
+      const errorMessage = error.message || error.response?.data?.message || '처리에 실패했습니다.';
       Alert.alert('오류', errorMessage);
     } finally {
       setResponding((prev) => ({ ...prev, [mailId]: false }));
@@ -174,8 +177,10 @@ export default function MailboxScreen({ navigation }) {
             <Text style={styles.emptyText}>우편함이 비어있습니다.</Text>
           </View>
         ) : (
-          mails.map((mail) => (
-            <View key={mail.id} style={styles.mailItem}>
+          mails.map((mail) => {
+            const isRead = mail.status === 'read' || mail.status === 'accepted' || mail.status === 'rejected';
+            return (
+            <View key={mail.id} style={[styles.mailItem, isRead && styles.mailItemRead]}>
               <View style={styles.mailHeader}>
                 <View style={styles.mailTypeBadge}>
                   <Text style={styles.mailTypeText}>{getMailTypeLabel(mail.mail_type)}</Text>
@@ -193,8 +198,8 @@ export default function MailboxScreen({ navigation }) {
                 <Text style={styles.mailDate}>{formatDate(mail.created_at)}</Text>
               </View>
 
-              {/* 응답 버튼 (unread 또는 read 상태일 때만) */}
-              {(mail.status === 'unread' || mail.status === 'read') && (
+              {/* 응답 버튼 (unread 상태일 때만) */}
+              {mail.status === 'unread' && (
                 <View style={styles.actionButtons}>
                   <TouchableOpacity
                     style={[styles.actionButton, styles.rejectButton]}
@@ -233,7 +238,8 @@ export default function MailboxScreen({ navigation }) {
                 </View>
               )}
             </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
     </SafeAreaView>
@@ -312,6 +318,9 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     borderWidth: 1,
     borderColor: '#E0E0E0',
+  },
+  mailItemRead: {
+    opacity: 0.6,
   },
   mailHeader: {
     flexDirection: 'row',
