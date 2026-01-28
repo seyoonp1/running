@@ -837,17 +837,7 @@ export default function GamePlayScreen({ navigation, route }) {
           onMapReady={handleMapReady}
           onCameraChange={handleCameraChange}
         >
-          {/* 게임 영역 중심 마커 */}
-          {gameAreaConfig?.center && (
-            <Marker
-              coordinate={gameAreaConfig.center}
-              title={gameAreaConfig.name || '게임 영역 중심'}
-            >
-              <View style={{ backgroundColor: 'red', padding: 10, borderRadius: 20 }}>
-                <Text style={{ color: 'white', fontWeight: 'bold' }}>CENTER</Text>
-              </View>
-            </Marker>
-          )}
+
 
           {/* 헥사곤 점령 영역 표시 (Polygon 방식 - 정확한 경계) */}
           {Object.entries(ownedHexes).map(([h3Id, data]) => {

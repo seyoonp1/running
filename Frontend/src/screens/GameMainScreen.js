@@ -20,6 +20,9 @@ import socketService from '../services/socketService';
 import { useAuth } from '../contexts/AuthContext';
 import simpleHexagon from '../../assets/icons/simple_hexagon.png';
 import simpleHexagonOrange from '../../assets/icons/simple_hexagon_orange.png';
+import runningManIcon from '../../assets/icons/runningman.png';
+import paintItemIcon from '../../assets/icons/paint item_icon.png';
+
 
 const { width, height } = Dimensions.get('window');
 
@@ -375,21 +378,13 @@ export default function GameMainScreen({ navigation }) {
                 </View>
               </TouchableOpacity>
             </View>
-            <View style={styles.navigationArrows}>
-              <TouchableOpacity>
-                <Text style={styles.arrow}>&lt;</Text>
-              </TouchableOpacity>
-              <TouchableOpacity>
-                <Text style={styles.arrow}>&gt;</Text>
-              </TouchableOpacity>
-            </View>
+
           </View>
 
           {/* 메인 활동 카드 */}
           <View style={styles.mainCard}>
-            {/* 왼쪽: 아이콘 */}
             <View style={styles.cardIconContainer}>
-              <LandIcon size={50} />
+              <Image source={paintItemIcon} style={styles.cardIcon} />
             </View>
 
             {/* 오른쪽: 텍스트 정보 */}
@@ -433,7 +428,7 @@ export default function GameMainScreen({ navigation }) {
             {/* 하단: 진행 정보 */}
             <View style={styles.cardBottom}>
               <View style={styles.cardBottomLeft}>
-                <Text style={styles.runningIcon}>🏃</Text>
+                <Image source={runningManIcon} style={styles.runningIcon} />
                 <Text style={styles.runningNumber}>
                   {myRoom ? `${myRoom.current_participants ?? 0}명` : '-'}
                 </Text>
@@ -686,11 +681,17 @@ const styles = StyleSheet.create({
   cardIconContainer: {
     position: 'absolute',
     left: 15,
-    top: 15,
+    top: 5,
+  },
+  cardIcon: {
+    width: 100,
+    height: 100,
+    resizeMode: 'contain',
   },
   cardTextContainer: {
-    marginLeft: 70,
-    marginBottom: 50,
+    marginLeft: 110,
+    marginBottom: 20,
+    marginTop: 10,
   },
   cardDays: {
     fontSize: 18,
@@ -735,8 +736,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   runningIcon: {
-    fontSize: 24,
-    marginRight: 5,
+    width: 112,
+    height: 112,
+    marginRight: 8,
+    resizeMode: 'contain',
+    tintColor: '#003D7A',
   },
   runningNumber: {
     fontSize: 18,

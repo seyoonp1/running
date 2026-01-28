@@ -125,17 +125,7 @@ export default function LandingScreen({ navigation }) {
             <Text style={styles.buttonText}>로그인</Text>
           </TouchableOpacity>
 
-          {/* 테스트용 버튼 (동일한 타원형 스타일 적용) */}
-          <TouchableOpacity
-            style={styles.ellipseButton}
-            onPress={() => navigation?.navigate('GameMain')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.buttonBackground, { borderColor: '#FF6B35' }]} />
-            <Text style={[styles.buttonText, { color: '#FF6B35', fontSize: 13 }]}>
-              🧪 테스트: 게임 메인
-            </Text>
-          </TouchableOpacity>
+
         </View>
       </View>
     </SafeAreaView>
