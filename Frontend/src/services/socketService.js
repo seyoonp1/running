@@ -1,8 +1,8 @@
 import { tokenService } from './api';
 
 const WS_URL = __DEV__
-    ? 'ws://localhost:8000/ws/room'
-    : 'wss://your-production-api.com/ws/room';
+    ? 'ws://44.196.254.97/ws/room' // 개발 환경에서도 EC2 서버 사용
+    : 'ws://44.196.254.97/ws/room'; // 프로덕션 환경
 
 class SocketService {
     constructor() {
