@@ -194,18 +194,18 @@ export default function GameMainScreen({ navigation }) {
       ]);
 
       // 백엔드 응답 형식: { results: [...], count: ... } 또는 [...]
-      const roomsList = Array.isArray(roomsData) 
-        ? roomsData 
+      const roomsList = Array.isArray(roomsData)
+        ? roomsData
         : (roomsData?.results || []);
-      
+
       setRooms(roomsList);
-      
+
       // getMyRoom은 null 또는 room 객체 반환
       setMyRoom(myRoomData || null);
     } catch (error) {
       console.error('데이터 로드 실패:', error);
       Alert.alert(
-        '오류', 
+        '오류',
         error.response?.data?.detail || error.message || '데이터를 불러오는데 실패했습니다.'
       );
       setRooms([]);
@@ -219,7 +219,7 @@ export default function GameMainScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       loadData();
-      
+
       // 내 방이 있으면 WebSocket 연결하여 실시간 업데이트 받기
       let unsubscribe = null;
       const setupWebSocket = async () => {
@@ -228,7 +228,7 @@ export default function GameMainScreen({ navigation }) {
           if (myRoomData?.id) {
             // WebSocket 연결
             socketService.connect(myRoomData.id);
-            
+
             // 방 업데이트 이벤트 리스너
             unsubscribe = socketService.on('room_updated', (data) => {
               console.log('GameMainScreen 방 업데이트 이벤트 수신:', data);
@@ -242,9 +242,9 @@ export default function GameMainScreen({ navigation }) {
           console.error('WebSocket 설정 실패:', error);
         }
       };
-      
+
       setupWebSocket();
-      
+
       return () => {
         if (unsubscribe) {
           unsubscribe();
@@ -314,7 +314,7 @@ export default function GameMainScreen({ navigation }) {
 
                 // invite_code로 방 참가
                 const result = await joinRoom(roomData.invite_code);
-                
+
                 Alert.alert('성공', result.message || '방에 참가했습니다.', [
                   {
                     text: '확인',
@@ -361,8 +361,14 @@ export default function GameMainScreen({ navigation }) {
               {/* 프로필 버튼 (사이드 메뉴 열기) */}
               <TouchableOpacity onPress={() => setIsMenuOpen(true)}>
                 <View style={styles.profileIconContainer}>
-                  {/* 임시 프로필 이미지 또는 아이콘 */}
                   <Text style={styles.profileIconText}>👤</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* 랭킹 버튼 (상단 직접 가기) */}
+              <TouchableOpacity onPress={() => navigation.navigate('Ranking')}>
+                <View style={styles.rankingIconContainer}>
+                  <Text style={styles.rankingIconText}>🏆</Text>
                 </View>
               </TouchableOpacity>
             </View>
@@ -435,11 +441,11 @@ export default function GameMainScreen({ navigation }) {
                   const { teamA, teamB } = myRoom && myRoom.status === 'active' && myRoom.current_hex_ownerships
                     ? calculateTeamScores(myRoom.current_hex_ownerships)
                     : { teamA: 0, teamB: 0 };
-                  
+
                   // 내 팀 확인
                   const myTeam = myRoom?.my_participant?.team;
                   const isTeamA = myTeam === 'A';
-                  
+
                   return (
                     <>
                       <View style={styles.hexagonContainer}>
@@ -600,6 +606,11 @@ export default function GameMainScreen({ navigation }) {
               <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); navigation.navigate('FriendList'); }}>
                 <Text style={styles.menuItemIcon}>👥</Text>
                 <Text style={styles.menuItemText}>친구</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); navigation.navigate('Ranking'); }}>
+                <Text style={styles.menuItemIcon}>🏆</Text>
+                <Text style={styles.menuItemText}>랭킹</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); navigation.navigate('Mailbox'); }}>
@@ -894,6 +905,20 @@ const styles = StyleSheet.create({
     borderColor: '#003D7A',
   },
   profileIconText: {
+    fontSize: 24,
+  },
+  // 랭킹 아이콘 스타일
+  rankingIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFF9C4', // 연한 노란색
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FBC02D', // 금색 느낌의 진한 노란색
+  },
+  rankingIconText: {
     fontSize: 24,
   },
   // 사이드 메뉴 스타일

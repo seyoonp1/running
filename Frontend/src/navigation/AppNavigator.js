@@ -14,6 +14,7 @@ import RecordStatsScreen from '../screens/RecordStatsScreen';
 import FriendListScreen from '../screens/FriendListScreen';
 import FriendSearchScreen from '../screens/FriendSearchScreen';
 import MailboxScreen from '../screens/MailboxScreen';
+import RankingScreen from '../screens/RankingScreen';
 import { AuthProvider } from '../contexts/AuthContext';
 
 const Stack = createStackNavigator();
@@ -41,6 +42,7 @@ export default function AppNavigator() {
           <Stack.Screen name="FriendList" component={FriendListScreen} />
           <Stack.Screen name="FriendSearch" component={FriendSearchScreen} />
           <Stack.Screen name="Mailbox" component={MailboxScreen} />
+          <Stack.Screen name="Ranking" component={RankingScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>

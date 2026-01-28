@@ -31,11 +31,8 @@ def _build_stats(user, rank=None):
 @permission_classes([IsAuthenticated])
 def ranking_list(request):
     """
-    전체 랭킹 리스트
+    전체 랭킹 리스트 (공동 순위 처리)
     GET /api/ranking/
-
-    쿼리 파라미터:
-    - limit: 반환 수 (기본 100, 최대 200)
     """
     try:
         limit = int(request.query_params.get('limit', 100))
@@ -43,10 +40,19 @@ def ranking_list(request):
         limit = 100
     limit = max(1, min(limit, 200))
 
-    users = User.objects.order_by('-rating', 'id')[:limit]
+    users = User.objects.order_by('-rating')[:limit]
     results = []
+    
+    current_rank = 1
+    previous_rating = None
+    
     for idx, user in enumerate(users, start=1):
-        results.append(_build_stats(user, rank=idx))
+        # 이전 사람과 점수가 다를 때만 등수를 갱신 (공동 순위 처리)
+        if previous_rating is not None and user.rating < previous_rating:
+            current_rank = idx
+            
+        results.append(_build_stats(user, rank=current_rank))
+        previous_rating = user.rating
 
     return Response({
         'results': results,
