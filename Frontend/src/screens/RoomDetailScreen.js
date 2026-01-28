@@ -11,6 +11,7 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import {
   getRoomDetail,
   leaveRoom,
@@ -19,6 +20,7 @@ import {
   inviteFriend,
   getAttendance,
 } from '../services/roomService';
+import { getFriends } from '../services/friendService';
 
 import { useAuth } from '../contexts/AuthContext';
 
@@ -31,7 +33,8 @@ export default function RoomDetailScreen({ navigation, route }) {
   const [showTeamChange, setShowTeamChange] = useState(false);
   const [showInviteFriend, setShowInviteFriend] = useState(false);
   const [showAttendance, setShowAttendance] = useState(false);
-  const [friendUserId, setFriendUserId] = useState('');
+  const [friends, setFriends] = useState([]);
+  const [friendsLoading, setFriendsLoading] = useState(false);
   const [attendanceData, setAttendanceData] = useState(null);
 
   // 현재 사용자가 방장인지 확인
@@ -56,7 +59,9 @@ export default function RoomDetailScreen({ navigation, route }) {
       const roomData = await getRoomDetail(roomId);
       setRoom(roomData);
     } catch (error) {
-      Alert.alert('오류', '방 정보를 불러올 수 없습니다.');
+      // roomService에서 이미 처리된 에러 메시지 사용
+      const errorMessage = error.message || '방 정보를 불러올 수 없습니다.';
+      Alert.alert('오류', errorMessage);
       console.error(error);
       navigation.goBack();
     } finally {
@@ -67,12 +72,11 @@ export default function RoomDetailScreen({ navigation, route }) {
   const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}.${month}.${day} ${hours}:${minutes}`;
+    return `${month}-${day} ${hours}:${minutes}`;
   };
 
   const handleLeaveRoom = async () => {
@@ -155,22 +159,60 @@ export default function RoomDetailScreen({ navigation, route }) {
     ]);
   };
 
-  const handleInviteFriend = async () => {
-    if (!friendUserId.trim()) {
-      Alert.alert('오류', '사용자 ID를 입력해주세요.');
+  const handleShowInviteFriend = async () => {
+    setShowInviteFriend(true);
+    // 친구 목록 로드
+    try {
+      setFriendsLoading(true);
+      const friendsData = await getFriends();
+      // 백엔드 응답 형식: { results: [...], count: ... }
+      const friendsList = Array.isArray(friendsData) 
+        ? friendsData 
+        : (friendsData?.results || []);
+      setFriends(friendsList);
+    } catch (error) {
+      const errorMessage = error.message || '친구 목록을 불러올 수 없습니다.';
+      Alert.alert('오류', errorMessage);
+      setShowInviteFriend(false);
+    } finally {
+      setFriendsLoading(false);
+    }
+  };
+
+  const handleInviteFriend = async (friendId) => {
+    if (!friendId) {
+      Alert.alert('오류', '친구를 선택해주세요.');
       return;
     }
 
     try {
       setActionLoading(true);
-      await inviteFriend(roomId, friendUserId.trim());
+      await inviteFriend(roomId, friendId);
       Alert.alert('성공', '초대를 보냈습니다.');
       setShowInviteFriend(false);
-      setFriendUserId('');
+      // 방 정보 새로고침
+      loadRoomDetail();
     } catch (error) {
-      Alert.alert('오류', error.message || '친구 초대에 실패했습니다.');
+      // roomService에서 이미 처리된 에러 메시지 사용
+      const errorMessage = error.message || '친구 초대에 실패했습니다.';
+      Alert.alert('오류', errorMessage);
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleCopyInviteCode = async () => {
+    if (!room?.invite_code) {
+      Alert.alert('오류', '초대 코드를 불러올 수 없습니다.');
+      return;
+    }
+
+    try {
+      await Clipboard.setStringAsync(room.invite_code);
+      Alert.alert('복사 완료', '초대 코드가 클립보드에 복사되었습니다.');
+    } catch (error) {
+      Alert.alert('오류', '초대 코드 복사에 실패했습니다.');
+      console.error('클립보드 복사 실패:', error);
     }
   };
 
@@ -181,7 +223,9 @@ export default function RoomDetailScreen({ navigation, route }) {
       setAttendanceData(data);
       setShowAttendance(true);
     } catch (error) {
-      Alert.alert('오류', '출석 현황을 불러올 수 없습니다.');
+      // roomService에서 이미 처리된 에러 메시지 사용
+      const errorMessage = error.message || '출석 현황을 불러올 수 없습니다.';
+      Alert.alert('오류', errorMessage);
     } finally {
       setActionLoading(false);
     }
@@ -218,8 +262,19 @@ export default function RoomDetailScreen({ navigation, route }) {
           {/* 출석 버튼 */}
           {/* 출석 버튼 제거됨 */}
 
+          {/* 방 나가기 버튼 (우측 상단) */}
+          <TouchableOpacity
+            style={styles.leaveRoomButton}
+            onPress={handleLeaveRoom}
+            disabled={actionLoading}
+          >
+            <Text style={styles.leaveRoomButtonText}>나가기</Text>
+          </TouchableOpacity>
+
           <Text style={styles.roomName}>{room.name}</Text>
-          <Text style={styles.inviteCode}>초대 코드: {room.invite_code}</Text>
+          <TouchableOpacity onPress={handleCopyInviteCode}>
+            <Text style={styles.inviteCode}>초대 코드: {room.invite_code}</Text>
+          </TouchableOpacity>
 
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>상태:</Text>
@@ -229,9 +284,16 @@ export default function RoomDetailScreen({ navigation, route }) {
           </View>
 
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>기간:</Text>
+            <Text style={styles.infoLabel}>시작일:</Text>
             <Text style={styles.infoValue}>
-              {formatDate(room.start_date)} ~ {formatDate(room.end_date)}
+              {formatDate(room.start_date)}
+            </Text>
+          </View>
+
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>종료일:</Text>
+            <Text style={styles.infoValue}>
+              {formatDate(room.end_date)}
             </Text>
           </View>
 
@@ -279,7 +341,7 @@ export default function RoomDetailScreen({ navigation, route }) {
                     <Text style={styles.participantNameSmall} numberOfLines={1}>
                       {participant.user?.username}
                     </Text>
-                    <Text style={styles.levelText}>Lv.{participant.user?.level || Math.floor(Math.random() * 30) + 1}</Text>
+                    <Text style={styles.levelText}>{participant.user?.rating || 0}</Text>
                     {participant.is_host && <Text style={styles.hostIcon}>👑</Text>}
                   </View>
                 ))}
@@ -292,7 +354,7 @@ export default function RoomDetailScreen({ navigation, route }) {
               style={[
                 styles.teamHeader,
                 styles.teamBHeader,
-                myTeam === 'B' && styles.selectedTeamHeader // 내 팀 강조
+                myTeam === 'B' && styles.selectedTeamHeaderB // 내 팀 강조 (주황색)
               ]}
               onPress={() => myTeam !== 'B' && handleChangeTeam('B')}
               disabled={loading || room.status !== 'ready' || myTeam === 'B'}
@@ -311,7 +373,7 @@ export default function RoomDetailScreen({ navigation, route }) {
                     <Text style={styles.participantNameSmall} numberOfLines={1}>
                       {participant.user?.username}
                     </Text>
-                    <Text style={styles.levelText}>Lv.{participant.user?.level || Math.floor(Math.random() * 30) + 1}</Text>
+                    <Text style={styles.levelText}>{participant.user?.rating || 0}</Text>
                     {participant.is_host && <Text style={styles.hostIcon}>👑</Text>}
                   </View>
                 ))}
@@ -328,7 +390,7 @@ export default function RoomDetailScreen({ navigation, route }) {
               {/* 친구 초대 */}
               <TouchableOpacity
                 style={styles.actionButton}
-                onPress={() => setShowInviteFriend(true)}
+                onPress={handleShowInviteFriend}
                 disabled={actionLoading}
               >
                 <Text style={styles.actionButtonText}>친구 초대</Text>
@@ -407,31 +469,43 @@ export default function RoomDetailScreen({ navigation, route }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>친구 초대</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={friendUserId}
-              onChangeText={setFriendUserId}
-              placeholder="사용자 ID 또는 username"
-              placeholderTextColor="#999"
-            />
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonCancel]}
-                onPress={() => {
-                  setShowInviteFriend(false);
-                  setFriendUserId('');
-                }}
-              >
-                <Text style={styles.modalButtonText}>취소</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonConfirm]}
-                onPress={handleInviteFriend}
-                disabled={actionLoading}
-              >
-                <Text style={[styles.modalButtonText, styles.modalButtonTextConfirm]}>초대</Text>
-              </TouchableOpacity>
-            </View>
+            {friendsLoading ? (
+              <View style={styles.friendsLoadingContainer}>
+                <ActivityIndicator size="large" color="#003D7A" />
+                <Text style={styles.friendsLoadingText}>친구 목록을 불러오는 중...</Text>
+              </View>
+            ) : friends.length === 0 ? (
+              <View style={styles.friendsEmptyContainer}>
+                <Text style={styles.friendsEmptyText}>친구가 없습니다.</Text>
+                <Text style={styles.friendsEmptySubtext}>먼저 친구를 추가해주세요.</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.friendsList}>
+                {friends.map((friend) => (
+                  <TouchableOpacity
+                    key={friend.id}
+                    style={styles.friendItem}
+                    onPress={() => handleInviteFriend(friend.id)}
+                    disabled={actionLoading}
+                  >
+                    <View style={styles.friendItemContent}>
+                      <Text style={styles.friendItemName}>{friend.username}</Text>
+                      <Text style={styles.friendItemEmail}>{friend.email}</Text>
+                    </View>
+                    <Text style={styles.friendItemArrow}>→</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => {
+                setShowInviteFriend(false);
+                setFriends([]);
+              }}
+            >
+              <Text style={styles.modalCloseButtonText}>닫기</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -526,6 +600,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderWidth: 1,
     borderColor: '#E0E0E0',
+    position: 'relative',
   },
   roomName: {
     fontSize: 24,
@@ -538,6 +613,7 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 15,
     fontWeight: '500',
+    textDecorationLine: 'underline',
   },
   attendanceButton: {
     position: 'absolute',
@@ -555,6 +631,23 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+  },
+  leaveRoomButton: {
+    position: 'absolute',
+    top: 15,
+    right: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#FFE0E0',
+    borderWidth: 1,
+    borderColor: '#FFB3B3',
+    zIndex: 10,
+  },
+  leaveRoomButtonText: {
+    color: '#D32F2F',
+    fontSize: 12,
+    fontWeight: '600',
   },
   attendanceButtonText: {
     color: '#FFFFFF',
@@ -611,7 +704,16 @@ const styles = StyleSheet.create({
   },
   selectedTeamHeader: {
     borderWidth: 2,
-    borderColor: '#003D7A', // Highlight border
+    borderColor: '#003D7A', // 파란색 테두리 (A팀)
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  selectedTeamHeaderB: {
+    borderWidth: 2,
+    borderColor: '#FF6B35', // 주황색 테두리 (B팀)
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
@@ -667,7 +769,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   actionButton: {
-    backgroundColor: '#003D7A',
+    backgroundColor: '#5A9FD4',
     paddingVertical: 15,
     borderRadius: 8,
     alignItems: 'center',
@@ -678,7 +780,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   startButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#81C784',
   },
   startButtonText: {
     color: '#FFFFFF',
@@ -686,7 +788,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   leaveButton: {
-    backgroundColor: '#F44336',
+    backgroundColor: '#EF5350',
   },
   leaveButtonText: {
     color: '#FFFFFF',
@@ -694,7 +796,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   playButton: {
-    backgroundColor: '#FF6B35',
+    backgroundColor: '#FF8A65',
     marginTop: 10,
   },
   playButtonText: {
@@ -826,5 +928,57 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 5,
+  },
+  friendsLoadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  friendsLoadingText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: '#666',
+  },
+  friendsEmptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  friendsEmptyText: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 8,
+  },
+  friendsEmptySubtext: {
+    fontSize: 14,
+    color: '#999',
+  },
+  friendsList: {
+    maxHeight: 400,
+    marginBottom: 10,
+  },
+  friendItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  friendItemContent: {
+    flex: 1,
+  },
+  friendItemName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#000000',
+    marginBottom: 4,
+  },
+  friendItemEmail: {
+    fontSize: 14,
+    color: '#666',
+  },
+  friendItemArrow: {
+    fontSize: 18,
+    color: '#003D7A',
+    marginLeft: 10,
   },
 });

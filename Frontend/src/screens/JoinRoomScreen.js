@@ -26,16 +26,26 @@ export default function JoinRoomScreen({ navigation }) {
       setLoading(true);
       const result = await joinRoom(inviteCode.trim().toUpperCase(), team);
       
-      Alert.alert('성공', result.message, [
+      // 백엔드 응답 형식: { message, room, participant }
+      const roomId = result.room?.id || result.room_id;
+      const successMessage = result.message || '방에 참가했습니다.';
+      
+      if (!roomId) {
+        Alert.alert('오류', '방 정보를 받아올 수 없습니다.');
+        return;
+      }
+      
+      Alert.alert('성공', successMessage, [
         {
           text: '확인',
           onPress: () => {
-            navigation.navigate('RoomDetail', { roomId: result.room.id });
+            navigation.navigate('RoomDetail', { roomId });
           },
         },
       ]);
     } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || '방 참가에 실패했습니다.';
+      // roomService에서 이미 처리된 에러 메시지 사용
+      const errorMessage = error.message || '방 참가에 실패했습니다.';
       Alert.alert('오류', errorMessage);
       console.error(error);
     } finally {

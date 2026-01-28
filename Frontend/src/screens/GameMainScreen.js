@@ -15,8 +15,10 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Path, Circle, Polygon } from 'react-native-svg';
-import { getRooms, getMyRoom } from '../services/roomService';
+import { getRooms, getMyRoom, getRoomDetail, joinRoom } from '../services/roomService';
 import { useAuth } from '../contexts/AuthContext';
+import simpleHexagon from '../../assets/icons/simple_hexagon.png';
+import simpleHexagonOrange from '../../assets/icons/simple_hexagon_orange.png';
 
 const { width, height } = Dimensions.get('window');
 
@@ -88,7 +90,29 @@ export default function GameMainScreen({ navigation }) {
   const [myRoom, setMyRoom] = useState(null);
   const [timeLeft, setTimeLeft] = useState('');
 
-  // 날짜 포맷팅 헬퍼
+  // 팀별 점수 계산 함수
+  const calculateTeamScores = (hexOwnerships) => {
+    if (!hexOwnerships || typeof hexOwnerships !== 'object') {
+      return { teamA: 0, teamB: 0 };
+    }
+
+    let teamA = 0;
+    let teamB = 0;
+
+    // current_hex_ownerships는 { h3Id: { team: 'A' or 'B', ... } } 형태
+    Object.values(hexOwnerships).forEach((hexData) => {
+      const team = hexData?.team;
+      if (team === 'A') {
+        teamA++;
+      } else if (team === 'B') {
+        teamB++;
+      }
+    });
+
+    return { teamA, teamB };
+  };
+
+  // 날짜 포맷팅 헬퍼 (메인 카드용 - 년도 포함)
   const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -98,6 +122,17 @@ export default function GameMainScreen({ navigation }) {
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
     return `${year}.${month}.${day} ${hours}:${minutes}`;
+  };
+
+  // 날짜 포맷팅 헬퍼 (방 리스트용 - 년도 제외)
+  const formatDateShort = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${month}-${day} ${hours}:${minutes}`;
   };
 
   // 카운트다운 효과
@@ -145,6 +180,7 @@ export default function GameMainScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [joiningRoomId, setJoiningRoomId] = useState(null);
 
 
   const loadData = async () => {
@@ -156,11 +192,23 @@ export default function GameMainScreen({ navigation }) {
         getMyRoom()
       ]);
 
-      setRooms(roomsData.results || []);
-      setMyRoom(myRoomData);
+      // 백엔드 응답 형식: { results: [...], count: ... } 또는 [...]
+      const roomsList = Array.isArray(roomsData) 
+        ? roomsData 
+        : (roomsData?.results || []);
+      
+      setRooms(roomsList);
+      
+      // getMyRoom은 null 또는 room 객체 반환
+      setMyRoom(myRoomData || null);
     } catch (error) {
       console.error('데이터 로드 실패:', error);
+      Alert.alert(
+        '오류', 
+        error.response?.data?.detail || error.message || '데이터를 불러오는데 실패했습니다.'
+      );
       setRooms([]);
+      setMyRoom(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -182,8 +230,86 @@ export default function GameMainScreen({ navigation }) {
     navigation.navigate('CreateRoom');
   };
 
-  const handleRoomPress = (roomId) => {
-    navigation.navigate('RoomDetail', { roomId });
+  const handleRoomPress = async (roomId) => {
+    // 이미 참가 중인 방이면 바로 상세 화면으로 이동
+    if (myRoom && myRoom.id === roomId) {
+      navigation.navigate('RoomDetail', { roomId });
+      return;
+    }
+
+    try {
+      setJoiningRoomId(roomId);
+      // 방 상세 정보를 먼저 가져와서 invite_code 확인
+      const roomData = await getRoomDetail(roomId);
+
+      // 방 상태 확인
+      if (roomData.status !== 'ready') {
+        Alert.alert('알림', '준비 중인 방만 참가할 수 있습니다.');
+        return;
+      }
+
+      // 정원 확인
+      if (roomData.current_participants >= roomData.total_participants) {
+        Alert.alert('알림', '방 정원이 가득 찼습니다.');
+        return;
+      }
+
+      // 참가 확인 다이얼로그
+      Alert.alert(
+        '방 참가',
+        `"${roomData.name}" 방에 참가하시겠습니까?`,
+        [
+          {
+            text: '취소',
+            style: 'cancel',
+            onPress: () => setJoiningRoomId(null),
+          },
+          {
+            text: '참가',
+            onPress: async () => {
+              try {
+                // 이미 참가 중인 방이 있는지 확인
+                if (myRoom) {
+                  Alert.alert(
+                    '알림',
+                    `이미 "${myRoom.name}" 방에 참가 중입니다.\n다른 방에 참가하려면 먼저 현재 방에서 나가주세요.`,
+                    [{ text: '확인' }]
+                  );
+                  setJoiningRoomId(null);
+                  return;
+                }
+
+                // invite_code로 방 참가
+                const result = await joinRoom(roomData.invite_code);
+                
+                Alert.alert('성공', result.message || '방에 참가했습니다.', [
+                  {
+                    text: '확인',
+                    onPress: () => {
+                      // 방 상세 화면으로 이동
+                      navigation.navigate('RoomDetail', { roomId });
+                      // 데이터 새로고침
+                      loadData();
+                    },
+                  },
+                ]);
+              } catch (error) {
+                const errorMessage = error.message || '방 참가에 실패했습니다.';
+                Alert.alert('오류', errorMessage);
+              } finally {
+                setJoiningRoomId(null);
+              }
+            },
+          },
+        ],
+        { cancelable: true, onDismiss: () => setJoiningRoomId(null) }
+      );
+    } catch (error) {
+      const errorMessage = error.message || '방 정보를 불러올 수 없습니다.';
+      Alert.alert('오류', errorMessage);
+    } finally {
+      setJoiningRoomId(null);
+    }
   };
 
   return (
@@ -228,16 +354,25 @@ export default function GameMainScreen({ navigation }) {
             <View style={styles.cardTextContainer}>
               {myRoom ? (
                 <>
-                  <Text style={styles.cardDays} numberOfLines={1}>{myRoom.name}</Text>
-                  <Text style={styles.cardTimes}>{myRoom.game_area?.name || '지역 정보 없음'}</Text>
-                  <Text style={styles.cardDates}>
-                    {formatDate(myRoom.start_date)} ~ {formatDate(myRoom.end_date)}
+                  <Text style={styles.cardDays} numberOfLines={1}>{myRoom.name || '방 이름 없음'}</Text>
+                  <Text style={styles.cardTimes}>
+                    {myRoom.game_area?.name || '지역 정보 없음'}
                   </Text>
+                  <View style={styles.cardDatesContainer}>
+                    <Text style={styles.cardDates}>
+                      <Text style={styles.roomDateLabel}>시작일: </Text>
+                      {myRoom.start_date ? formatDateShort(myRoom.start_date) : ''}
+                    </Text>
+                    <Text style={styles.cardDates}>
+                      <Text style={styles.roomDateLabel}>종료일: </Text>
+                      {myRoom.end_date ? formatDateShort(myRoom.end_date) : ''}
+                    </Text>
+                  </View>
                   <Text style={[
                     styles.cardStatus,
                     { color: myRoom.status === 'active' ? '#4CAF50' : '#FF5252', fontWeight: '600' }
                   ]}>
-                    {myRoom.status === 'active' ? '● 게임 진행 중' : '○ 게임 준비 중'}
+                    {myRoom.status === 'active' ? '● 게임 진행 중' : myRoom.status === 'ready' ? '○ 게임 준비 중' : '● 게임 종료'}
                   </Text>
                   {timeLeft ? (
                     <Text style={styles.countdownText}>
@@ -258,12 +393,45 @@ export default function GameMainScreen({ navigation }) {
               <View style={styles.cardBottomLeft}>
                 <Text style={styles.runningIcon}>🏃</Text>
                 <Text style={styles.runningNumber}>
-                  {myRoom ? `${myRoom.current_participants || 0}명` : '-'}
+                  {myRoom ? `${myRoom.current_participants ?? 0}명` : '-'}
                 </Text>
               </View>
               <View style={styles.progressBarsContainer}>
-                <ProgressBar width={60} height={12} filled={!!myRoom} color="#FF6B35" />
-                <ProgressBar width={60} height={12} filled={false} />
+                {(() => {
+                  // 팀별 점수 계산
+                  const { teamA, teamB } = myRoom && myRoom.status === 'active' && myRoom.current_hex_ownerships
+                    ? calculateTeamScores(myRoom.current_hex_ownerships)
+                    : { teamA: 0, teamB: 0 };
+                  
+                  // 내 팀 확인
+                  const myTeam = myRoom?.my_participant?.team;
+                  const isTeamA = myTeam === 'A';
+                  
+                  return (
+                    <>
+                      <View style={styles.hexagonContainer}>
+                        <Image
+                          source={isTeamA ? simpleHexagonOrange : simpleHexagon}
+                          style={styles.hexagonIcon}
+                          resizeMode="contain"
+                        />
+                        <Text style={styles.hexagonText}>
+                          {myRoom && myRoom.status === 'active' ? teamA : 0}
+                        </Text>
+                      </View>
+                      <View style={styles.hexagonContainer}>
+                        <Image
+                          source={isTeamA ? simpleHexagon : simpleHexagonOrange}
+                          style={styles.hexagonIcon}
+                          resizeMode="contain"
+                        />
+                        <Text style={styles.hexagonText}>
+                          {myRoom && myRoom.status === 'active' ? teamB : 0}
+                        </Text>
+                      </View>
+                    </>
+                  );
+                })()}
               </View>
               <View style={styles.playButtonContainer}>
                 <TouchableOpacity
@@ -315,18 +483,40 @@ export default function GameMainScreen({ navigation }) {
               rooms.map((room) => (
                 <TouchableOpacity
                   key={room.id}
-                  style={styles.roomCard}
+                  style={[
+                    styles.roomCard,
+                    joiningRoomId === room.id && styles.roomCardLoading
+                  ]}
                   onPress={() => handleRoomPress(room.id)}
+                  disabled={joiningRoomId === room.id}
                 >
-                  <View style={styles.roomCardIcon}>
-                    <LandIcon size={35} />
-                  </View>
-                  <Text style={styles.roomName} numberOfLines={1}>
-                    {room.name}
-                  </Text>
-                  <Text style={styles.roomPlayerCount}>
-                    {room.current_participants || 0}/{room.total_participants}
-                  </Text>
+                  {joiningRoomId === room.id ? (
+                    <ActivityIndicator size="small" color="#003D7A" />
+                  ) : (
+                    <>
+                      <View style={styles.roomCardIcon}>
+                        <LandIcon size={35} />
+                      </View>
+                      <Text style={styles.roomName} numberOfLines={1}>
+                        {room.name}
+                      </Text>
+                      <Text style={styles.roomPlayerCount}>
+                        {room.current_participants || 0}/{room.total_participants}
+                      </Text>
+                      {room.start_date && room.end_date && (
+                        <View style={styles.roomDateContainer}>
+                          <View style={styles.roomDateRow}>
+                            <Text style={styles.roomDateLabel}>시작일: </Text>
+                            <Text style={styles.roomDateValue}>{formatDateShort(room.start_date)}</Text>
+                          </View>
+                          <View style={styles.roomDateRow}>
+                            <Text style={styles.roomDateLabel}>종료일: </Text>
+                            <Text style={styles.roomDateValue}>{formatDateShort(room.end_date)}</Text>
+                          </View>
+                        </View>
+                      )}
+                    </>
+                  )}
                 </TouchableOpacity>
               ))
             )}
@@ -357,7 +547,9 @@ export default function GameMainScreen({ navigation }) {
                 <Text style={styles.bigProfileIconText}>👤</Text>
               </View>
               <Text style={styles.menuUsername}>{user?.username || '게스트'}</Text>
-              <Text style={styles.menuLevel}>Lv.{user?.level || 1}</Text>
+              <Text style={styles.menuLevel}>
+                레이팅: {user?.rating || 1000}점
+              </Text>
             </View>
 
             {/* 메뉴 리스트 */}
@@ -464,6 +656,9 @@ const styles = StyleSheet.create({
     color: '#000000',
     marginBottom: 4,
   },
+  cardDatesContainer: {
+    marginTop: 4,
+  },
   cardDates: {
     fontSize: 14,
     color: '#666666',
@@ -473,19 +668,20 @@ const styles = StyleSheet.create({
   cardStatus: {
     fontSize: 14,
     color: '#999999',
-    marginTop: 8,
+    marginTop: 4,
+    marginBottom: 4,
   },
   countdownText: {
     fontSize: 14,
     color: '#FF5252',
-
-    marginTop: 4,
+    marginTop: 2,
+    marginBottom: 0,
   },
   cardBottom: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 10,
+    marginTop: 0,
   },
   cardBottomLeft: {
     flexDirection: 'row',
@@ -503,9 +699,28 @@ const styles = StyleSheet.create({
   progressBarsContainer: {
     flexDirection: 'row',
     gap: 8,
+    alignItems: 'center',
   },
-  progressBar: {
-    borderRadius: 6,
+  hexagonContainer: {
+    position: 'relative',
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  hexagonIcon: {
+    width: 50,
+    height: 50,
+    position: 'absolute',
+  },
+  hexagonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    zIndex: 1,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   playButtonContainer: {
     marginLeft: 10,
@@ -569,11 +784,16 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 15,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 120,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+  },
+  roomCardLoading: {
+    opacity: 0.6,
   },
   roomCardIcon: {
     marginBottom: 10,
@@ -590,6 +810,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#003D7A',
+    marginBottom: 8,
+  },
+  roomDateContainer: {
+    width: '100%',
+    marginTop: 6,
+    alignItems: 'center',
+  },
+  roomDateText: {
+    fontSize: 12,
+    color: '#000000',
+  },
+  roomDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  roomDateLabel: {
+    fontSize: 10,
+    color: '#666666',
+  },
+  roomDateValue: {
+    fontSize: 10,
+    color: '#000000',
+    fontWeight: '500',
   },
   loadingContainer: {
     width: '100%',

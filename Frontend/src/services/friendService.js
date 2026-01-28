@@ -2,7 +2,7 @@ import api from './api';
 import { mockApi } from './mockData';
 
 // Mock 모드 활성화 여부
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 /**
  * 친구 목록 조회
@@ -21,7 +21,22 @@ export const getFriends = async (params = {}) => {
     return response.data;
   } catch (error) {
     console.error('친구 목록 조회 실패:', error);
-    throw error;
+    // 에러 처리 개선
+    if (!error.response) {
+      const networkError = new Error('네트워크 연결을 확인해주세요.');
+      networkError.isNetworkError = true;
+      throw networkError;
+    }
+    const errorData = error.response.data;
+    let errorMessage = '친구 목록을 불러올 수 없습니다.';
+    if (errorData?.message) {
+      errorMessage = errorData.message;
+    } else if (errorData?.detail) {
+      errorMessage = errorData.detail;
+    }
+    const processedError = new Error(errorMessage);
+    processedError.response = error.response;
+    throw processedError;
   }
 };
 

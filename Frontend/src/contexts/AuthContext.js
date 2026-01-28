@@ -101,13 +101,66 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (username, email, password) => {
     try {
-      await api.post('/auth/register/', { username, email, password });
+      const response = await api.post('/auth/register/', { username, email, password });
+      const { access, refresh, id, username: registeredUsername, email: registeredEmail } = response.data;
+      
+      // 회원가입 성공 시 자동으로 토큰 저장 및 로그인 처리
+      if (access && refresh) {
+        await tokenService.setTokens(access, refresh);
+        setUser({
+          id,
+          username: registeredUsername,
+          email: registeredEmail
+        });
+      }
+      
       return { success: true };
     } catch (error) {
       console.error('회원가입 에러:', error);
+      
+      // 네트워크 에러 처리
+      if (!error.response) {
+        return {
+          success: false,
+          error: '네트워크 연결을 확인해주세요.'
+        };
+      }
+
+      const errorData = error.response.data;
+      let errorMessage = '회원가입에 실패했습니다.';
+
+      // Django REST Framework 에러 형식 처리
+      if (errorData) {
+        // 일반 에러 메시지
+        if (errorData.detail) {
+          errorMessage = errorData.detail;
+        }
+        // ValidationError (non_field_errors)
+        else if (errorData.non_field_errors && Array.isArray(errorData.non_field_errors)) {
+          errorMessage = errorData.non_field_errors[0];
+        }
+        // 필드별 에러
+        else if (errorData.username && Array.isArray(errorData.username)) {
+          errorMessage = `사용자명: ${errorData.username[0]}`;
+        }
+        else if (errorData.email && Array.isArray(errorData.email)) {
+          errorMessage = `이메일: ${errorData.email[0]}`;
+        }
+        else if (errorData.password && Array.isArray(errorData.password)) {
+          errorMessage = `비밀번호: ${errorData.password[0]}`;
+        }
+        // 기타 에러 형식
+        else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+        else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      }
+
       return {
         success: false,
-        error: error.response?.data || error.message
+        error: errorMessage
       };
     }
   };
