@@ -674,7 +674,7 @@ export default function GamePlayScreen({ navigation, route }) {
 
       // 현재 내 위치의 H3 ID
       if (!location) return;
-      const currentH3Index = latLngToCell(location.latitude, location.longitude, KAIST_CONFIG.h3Resolution);
+      const currentH3Index = latLngToCell(location.latitude, location.longitude, gameAreaConfig?.h3Resolution || 8);
 
       // k-ring 거리 계산
       const distance = gridDistance(currentH3Index, h3Id);
@@ -760,7 +760,7 @@ export default function GamePlayScreen({ navigation, route }) {
   // 일반 페인트볼 롱프레스 (내 주변 1칸 깜빡임)
   const handlePaintballLongPress = () => {
     if (!location) return;
-    const currentH3Index = latLngToCell(location.latitude, location.longitude, KAIST_CONFIG.h3Resolution);
+    const currentH3Index = latLngToCell(location.latitude, location.longitude, gameAreaConfig?.h3Resolution || 8);
     // k=1 (1칸 범위)
     const neighbors = gridDisk(currentH3Index, 1);
     setAimingHexes(neighbors);
@@ -771,7 +771,7 @@ export default function GamePlayScreen({ navigation, route }) {
   // 슈퍼 페인트볼 롱프레스 (내 주변 2칸 깜빡임)
   const handleSuperPaintballLongPress = () => {
     if (!location) return;
-    const currentH3Index = latLngToCell(location.latitude, location.longitude, KAIST_CONFIG.h3Resolution);
+    const currentH3Index = latLngToCell(location.latitude, location.longitude, gameAreaConfig?.h3Resolution || 8);
     // k=2 (2칸 범위)
     const neighbors = gridDisk(currentH3Index, 2);
     setAimingHexes(neighbors);
